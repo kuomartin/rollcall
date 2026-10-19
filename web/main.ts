@@ -200,29 +200,23 @@ ui.session.addEventListener("change", renderRecent);
 interface Detector {
   detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]>;
 }
-declare const BarcodeDetector: { new (options: { formats: string[] }): Detector } | undefined;
+declare const BarcodeDetector:
+  | { new (options: { formats: string[] }): Detector; getSupportedFormats(): Promise<string[]> }
+  | undefined;
 
 type Detect = (video: HTMLVideoElement) => Promise<string | null>;
 
-/** 解碼用的畫面寬度上限：jsQR 在大圖上很慢，QR code 在 640 px 寬的畫面裡已經夠清楚。 */
-const DECODE_WIDTH = 640;
-
+/** 內建的 BarcodeDetector 支援全部所需格式才用；否則載入 ponyfill。 */
 async function createDetector(): Promise<Detect> {
-  if (typeof BarcodeDetector !== "undefined") {
-    const detector = new BarcodeDetector({ formats: ["qr_code"] });
-    return async (video) => (await detector.detect(video).catch(() => []))[0]?.rawValue ?? null;
+  const { FORMATS, WASM_FILE, createPonyfill } = await import("./barcode.ts");
+  let detector: Detector;
+  const supported = typeof BarcodeDetector === "undefined" ? [] : await BarcodeDetector.getSupportedFormats();
+  if (typeof BarcodeDetector !== "undefined" && FORMATS.every((f) => supported.includes(f))) {
+    detector = new BarcodeDetector({ formats: [...FORMATS] });
+  } else {
+    detector = createPonyfill(new URL(WASM_FILE, document.baseURI).href);
   }
-  const { decodeRgba } = await import("./qr.ts");
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  return async (video) => {
-    if (!video.videoWidth) return null;
-    const scale = Math.min(1, DECODE_WIDTH / video.videoWidth);
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return decodeRgba(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-  };
+  return async (video) => (await detector.detect(video).catch(() => []))[0]?.rawValue ?? null;
 }
 
 async function startCamera(): Promise<void> {

@@ -34,7 +34,7 @@ async function buildGas(): Promise<void> {
 }
 
 async function buildWeb(): Promise<void> {
-  // splitting：web/qr.ts（含 jsQR）拆成獨立 chunk，只在沒有 BarcodeDetector 時載入。
+  // splitting：web/barcode.ts（含 ponyfill）拆成獨立 chunk，按下相機時才載入。
   await esbuild.build({
     entryPoints: ["web/main.ts"],
     bundle: true,
@@ -47,6 +47,8 @@ async function buildWeb(): Promise<void> {
     minify: true,
   });
   copyFileSync("web/index.html", "dist/web/index.html");
+  // web/barcode.ts 的 ponyfill 從頁面同一個位置載入 wasm。
+  copyFileSync("node_modules/zxing-wasm/dist/reader/zxing_reader.wasm", "dist/web/zxing_reader.wasm");
 }
 
 rmSync("dist", { recursive: true, force: true });
