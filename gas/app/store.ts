@@ -6,7 +6,7 @@
 //
 // scanId 存在 CacheService：快取被清掉後重送的掃描可能多寫一列。報到本來就允許重複，所以接受。
 
-import type { RosterTable } from "../../core/roster.ts";
+import { markColumnHeader, type RosterTable } from "../../core/roster.ts";
 import type { LogEntry, LogStore, RosterStore } from "../../core/sync.ts";
 import { DATETIME_FORMAT, ensureLogSheet, LOG_HEADERS, rosterIndex, rosterSheet } from "./sheets.ts";
 
@@ -152,10 +152,6 @@ export function writeReservations(reservations: Reservation[], roster: RosterTab
       props.setProperty(rowKey(session), String(Math.max(at + rows.length, Number(props.getProperty(rowKey(session)) ?? 0))));
     });
   }
-}
-
-export function markColumnHeader(session: string): string {
-  return `${session} 報到時間`;
 }
 
 /** 新場次的報到時間欄在儲存設定時建立；這裡遇到缺欄位才在 lock 內補建。 */

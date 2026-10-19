@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SyncClient, connectivity } from "./client.ts";
+import { CheckInIndex, SyncClient, connectivity } from "./client.ts";
 import type { LogEntry, Scan } from "./sync.ts";
 
 function scan(scanId: string): Scan {
@@ -78,4 +78,23 @@ test("a request pending under 10 s is ok", () => {
 
 test("never having synced is offline", () => {
   assert.equal(connectivity({ ...base, lastSuccessAt: null }), "offline");
+});
+
+test("CheckInIndex keeps the latest time per session and code", () => {
+  const index = new CheckInIndex();
+  index.load({ "5/22": { A001: 1000 } });
+  index.add("5/22", "A001", 3000);
+  index.add("5/22", "A001", 2000);
+  index.add("5/23", "A001", 500);
+  assert.equal(index.last("5/22", "A001"), 3000);
+  assert.equal(index.last("5/23", "A001"), 500);
+  assert.equal(index.last("5/22", "A002"), undefined);
+});
+
+test("CheckInIndex.load replaces earlier contents", () => {
+  const index = new CheckInIndex();
+  index.add("5/22", "A001", 1000);
+  index.load({ "5/22": { A002: 2000 } });
+  assert.equal(index.last("5/22", "A001"), undefined);
+  assert.equal(index.last("5/22", "A002"), 2000);
 });

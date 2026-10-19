@@ -12,10 +12,14 @@ export interface BootstrapResult {
   sessions: string[];
   template: string;
   roster: RosterCache;
+  /** 場次 → 學員代號 → 最近報到時間，用來提醒重複報到。 */
+  checkedIn: Record<string, Record<string, number>>;
 }
 
 export interface LookupResult {
   row: CacheRow | null;
+  /** 這位學員在各場次的最近報到時間。 */
+  checkedIn: Record<string, number>;
 }
 
 export interface SyncResult extends SyncResponse {

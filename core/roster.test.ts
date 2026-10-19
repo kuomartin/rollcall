@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRosterCache, cacheRow, findRow, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
+import { buildRosterCache, cacheRow, checkInTimes, findRow, markColumnHeader, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
 
 const table: RosterTable = {
   headers: ["學員代號", "姓名", "手機", "班級", "備註"],
@@ -68,4 +68,24 @@ test("maskPhone keeps only the last three digits", () => {
 test("missingRequired reports a roster without the code column", () => {
   assert.deepEqual(missingRequired(["姓名", "手機"]), ["學員代號"]);
   assert.deepEqual(missingRequired(table.headers), []);
+});
+
+test("checkInTimes reads each session's check-in time column", () => {
+  const t: RosterTable = {
+    headers: ["學員代號", "姓名", "5/22 報到時間", "5/23 報到時間"],
+    rows: [
+      ["A001", "張志豪", new Date(1000), ""],
+      ["A002", "李美玲", "", new Date(2000)],
+      ["", "空白", new Date(3000), ""],
+    ],
+  };
+  assert.deepEqual(checkInTimes(t, ["5/22", "5/23", "5/24"]), {
+    "5/22": { A001: 1000 },
+    "5/23": { A002: 2000 },
+    "5/24": {},
+  });
+});
+
+test("markColumnHeader names the roster column for a session", () => {
+  assert.equal(markColumnHeader("5/22報到"), "5/22報到 報到時間");
 });

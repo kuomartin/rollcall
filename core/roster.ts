@@ -76,3 +76,27 @@ export function findRow(table: RosterTable, query: string): number {
   if (phoneIndex === -1 || !key) return -1;
   return table.rows.findIndex((row) => phoneKey(row[phoneIndex]) === key);
 }
+
+/** 學員名單上記錄某場次最近報到時間的欄位名稱，由程式維護。 */
+export function markColumnHeader(session: string): string {
+  return `${session} 報到時間`;
+}
+
+/** 各場次已報到學員的最近報到時間（epoch ms），讀自學員名單的「{場次} 報到時間」欄。 */
+export function checkInTimes(table: RosterTable, sessions: readonly string[]): Record<string, Record<string, number>> {
+  const codeIndex = table.headers.indexOf(CODE_FIELD);
+  const out: Record<string, Record<string, number>> = {};
+  for (const session of sessions) {
+    const col = table.headers.indexOf(markColumnHeader(session));
+    const times: Record<string, number> = {};
+    if (col !== -1) {
+      for (const row of table.rows) {
+        const code = text(row[codeIndex]);
+        const at = row[col] instanceof Date ? row[col].getTime() : NaN;
+        if (code && Number.isFinite(at)) times[code] = at;
+      }
+    }
+    out[session] = times;
+  }
+  return out;
+}

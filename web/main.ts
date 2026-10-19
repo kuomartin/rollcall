@@ -1,7 +1,7 @@
 // 掃描頁（docs/adr/0003-local-first-check-in-with-one-writer.md）：名單快取本機比對、先回應再背景同步、斷線禁止報到。
 
 import type { ApiRequest, ApiResponse, BootstrapResult, LookupResult, SyncResult } from "../core/api.ts";
-import { SyncClient, connectivity, type Connectivity } from "../core/client.ts";
+import { CheckInIndex, SyncClient, connectivity, type Connectivity } from "../core/client.ts";
 import { CODE_FIELD, type CacheRow } from "../core/roster.ts";
 import type { LogEntry, Scan } from "../core/sync.ts";
 import { renderTemplate } from "../core/template.ts";
@@ -87,6 +87,7 @@ async function call<T>(body: ApiRequest): Promise<T> {
 const client = new SyncClient(storedDeviceId());
 let config: BootstrapResult | null = null;
 const rosterByCode = new Map<string, CacheRow>();
+const checkedIn = new CheckInIndex();
 const own: LogEntry[] = [];
 let lastSuccessAt: number | null = null;
 let lastFailureAt: number | null = null;
@@ -98,9 +99,16 @@ function state(): Connectivity {
   return connectivity({ now: Date.now(), online: navigator.onLine, lastSuccessAt, lastFailureAt, inFlightSince });
 }
 
-function showResult(kind: "ok" | "error" | "info", text: string): void {
+function showResult(kind: "ok" | "error" | "info" | "warn", text: string, action?: { label: string; run: () => void }): void {
   ui.result.className = `result ${kind}`;
   ui.result.textContent = text;
+  if (action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    button.addEventListener("click", action.run, { once: true });
+    ui.result.append(document.createElement("br"), button);
+  }
 }
 
 function renderStatus(): void {
@@ -158,6 +166,8 @@ function applyBootstrap(data: BootstrapResult): void {
   config = data;
   rosterByCode.clear();
   for (const row of data.roster.rows) rosterByCode.set(row[CODE_FIELD], row);
+  checkedIn.load(data.checkedIn);
+  for (const e of [...own, ...client.entries()]) checkedIn.add(e.session, e.code, e.at);
   ui.session.replaceChildren(...data.sessions.map((s) => new Option(s, s)));
   if (data.sessions.includes(previous)) ui.session.value = previous;
 }
@@ -187,6 +197,7 @@ async function syncOnce(): Promise<void> {
   try {
     const res = await call<SyncResult>({ action: "sync", ...client.request() });
     client.receive(res);
+    for (const e of res.entries) checkedIn.add(e.session, e.code, e.at);
     lastSuccessAt = Date.now();
     lastError = "";
     notifyJump(res.acked);
@@ -205,12 +216,19 @@ async function resolve(query: string): Promise<CacheRow | null> {
   const local = rosterByCode.get(query);
   if (local) return local;
   // 本機查無：可能是手機號碼，或名單剛改過。
-  const { row } = await call<LookupResult>({ action: "lookup", query });
-  if (row) rosterByCode.set(row[CODE_FIELD], row);
-  return row;
+  const res = await call<LookupResult>({ action: "lookup", query });
+  if (res.row) {
+    rosterByCode.set(res.row[CODE_FIELD], res.row);
+    for (const [session, at] of Object.entries(res.checkedIn)) checkedIn.add(session, res.row[CODE_FIELD], at);
+  }
+  return res.row;
 }
 
-async function checkIn(raw: string): Promise<void> {
+/**
+ * confirmed：同一場次已報到過的學員，要工作人員按「仍要報到」才記錄。
+ * 報到允許重複（例如中途離場再入場），但多半是誤掃，所以預設提醒而不是直接記錄。
+ */
+async function checkIn(raw: string, confirmed = false): Promise<void> {
   const query = raw.trim();
   if (!query || !config) return;
   if (state() === "offline") {
@@ -230,8 +248,20 @@ async function checkIn(raw: string): Promise<void> {
     showResult("error", `查無此學員：${query}`);
     return;
   }
-  const scan: Scan = { scanId: crypto.randomUUID(), code: row[CODE_FIELD], session: ui.session.value, at: Date.now() };
+  const session = ui.session.value;
+  const code = row[CODE_FIELD];
+  const previous = checkedIn.last(session, code);
+  if (previous !== undefined && !confirmed) {
+    const name = row["姓名"] ? ` ${row["姓名"]}` : "";
+    showResult("warn", `${code}${name} 已在 ${clock(previous)} 報到過（${session}）`, {
+      label: "仍要報到",
+      run: () => void checkIn(code, true),
+    });
+    return;
+  }
+  const scan: Scan = { scanId: crypto.randomUUID(), code, session, at: Date.now() };
   client.enqueue(scan);
+  checkedIn.add(session, code, scan.at);
   own.push({ ...scan, seq: 0, deviceId: client.deviceId });
   showResult("ok", renderTemplate(config.template, row));
   render();

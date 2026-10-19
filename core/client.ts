@@ -39,6 +39,27 @@ export class SyncClient {
   }
 }
 
+/** 每個場次裡每位學員最近的報到時間：判斷是不是重複報到。 */
+export class CheckInIndex {
+  #times = new Map<string, number>();
+
+  load(times: Record<string, Record<string, number>>): void {
+    this.#times.clear();
+    for (const [session, codes] of Object.entries(times)) {
+      for (const [code, at] of Object.entries(codes)) this.add(session, code, at);
+    }
+  }
+
+  add(session: string, code: string, at: number): void {
+    const key = `${session}\u0000${code}`;
+    this.#times.set(key, Math.max(at, this.#times.get(key) ?? 0));
+  }
+
+  last(session: string, code: string): number | undefined {
+    return this.#times.get(`${session}\u0000${code}`);
+  }
+}
+
 export type Connectivity = "ok" | "delayed" | "offline";
 
 export interface ConnectivityInput {

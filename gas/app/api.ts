@@ -1,7 +1,7 @@
 // doPost 的動作：bootstrap、lookup、sync。
 
 import type { ApiRequest, BootstrapResult, LookupResult, SyncResult } from "../../core/api.ts";
-import { buildRosterCache, cacheFields, cacheRow, findRow } from "../../core/roster.ts";
+import { buildRosterCache, cacheFields, cacheRow, checkInTimes, CODE_FIELD, findRow } from "../../core/roster.ts";
 import { applySync, type SyncRequest, type SyncResponse } from "../../core/sync.ts";
 import { getSettings, rosterVersion } from "./settings.ts";
 import { readRoster } from "./sheets.ts";
@@ -11,14 +11,26 @@ const LOCK_WAIT_MS = 20_000;
 
 function bootstrap(): BootstrapResult {
   const { sessions, template } = getSettings();
-  return { sessions, template, roster: buildRosterCache(readRoster(), template, rosterVersion()) };
+  const roster = readRoster();
+  return {
+    sessions,
+    template,
+    roster: buildRosterCache(roster, template, rosterVersion()),
+    checkedIn: checkInTimes(roster, sessions),
+  };
 }
 
 function lookup(query: string): LookupResult {
   const roster = readRoster();
   const index = findRow(roster, query);
-  if (index === -1) return { row: null };
-  return { row: cacheRow(roster, index, cacheFields(roster.headers, getSettings().template)) };
+  if (index === -1) return { row: null, checkedIn: {} };
+  const { template, sessions } = getSettings();
+  const row = cacheRow(roster, index, cacheFields(roster.headers, template));
+  const times = checkInTimes({ headers: roster.headers, rows: [roster.rows[index]] }, sessions);
+  const checkedIn = Object.fromEntries(
+    Object.entries(times).flatMap(([session, codes]) => (row[CODE_FIELD] in codes ? [[session, codes[row[CODE_FIELD]]]] : [])),
+  );
+  return { row, checkedIn };
 }
 
 /** 只在 --dev 建置記錄各段耗時，隨回應帶回。 */
