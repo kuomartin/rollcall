@@ -4,7 +4,7 @@
   "scripts": {
     "build": "node scripts/build.ts",
     "typecheck": "tsc",
-    "test": "node --test \"core/**/*.test.ts\""
+    "test": "node --test \"core/**/*.test.ts\" \"web/**/*.test.ts\""
   },
   "repository": {
     "type": "git",
@@ -19,11 +19,16 @@
     "@google/clasp": "^3.4.1",
     "@types/google-apps-script": "^2.0.13",
     "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
     "esbuild": "^0.28.2",
+    "qrcode": "^1.5.4",
     "typescript": "^7.0.2"
   },
   "private": true,
   "engines": {
     "node": ">=24"
+  },
+  "dependencies": {
+    "jsqr": "^1.4.0"
   }
 }

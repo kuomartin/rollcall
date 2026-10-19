@@ -34,13 +34,17 @@ async function buildGas(): Promise<void> {
 }
 
 async function buildWeb(): Promise<void> {
+  // splitting：web/qr.ts（含 jsQR）拆成獨立 chunk，只在沒有 BarcodeDetector 時載入。
   await esbuild.build({
     entryPoints: ["web/main.ts"],
     bundle: true,
     format: "esm",
+    splitting: true,
     target: "es2022",
     charset: "utf8",
-    outfile: "dist/web/main.js",
+    outdir: "dist/web",
+    chunkNames: "chunks/[name]-[hash]",
+    minify: true,
   });
   copyFileSync("web/index.html", "dist/web/index.html");
 }

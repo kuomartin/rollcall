@@ -202,20 +202,43 @@ interface Detector {
 }
 declare const BarcodeDetector: { new (options: { formats: string[] }): Detector } | undefined;
 
+type Detect = (video: HTMLVideoElement) => Promise<string | null>;
+
+/** 解碼用的畫面寬度上限：jsQR 在大圖上很慢，QR code 在 640 px 寬的畫面裡已經夠清楚。 */
+const DECODE_WIDTH = 640;
+
+async function createDetector(): Promise<Detect> {
+  if (typeof BarcodeDetector !== "undefined") {
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    return async (video) => (await detector.detect(video).catch(() => []))[0]?.rawValue ?? null;
+  }
+  const { decodeRgba } = await import("./qr.ts");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  return async (video) => {
+    if (!video.videoWidth) return null;
+    const scale = Math.min(1, DECODE_WIDTH / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return decodeRgba(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+  };
+}
+
 async function startCamera(): Promise<void> {
-  if (typeof BarcodeDetector === "undefined") return;
-  const detector = new BarcodeDetector({ formats: ["qr_code"] });
+  const detect = await createDetector();
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   ui.video.srcObject = stream;
   ui.video.hidden = false;
+  ui.camera.textContent = "關閉相機";
   await ui.video.play();
   let last = { value: "", at: 0 };
   const loop = async () => {
     if (!ui.video.srcObject) return;
-    const [code] = await detector.detect(ui.video).catch(() => []);
-    if (code && !(code.rawValue === last.value && Date.now() - last.at < CAMERA_REPEAT_MS)) {
-      last = { value: code.rawValue, at: Date.now() };
-      void checkIn(code.rawValue);
+    const value = await detect(ui.video);
+    if (value && !(value === last.value && Date.now() - last.at < CAMERA_REPEAT_MS)) {
+      last = { value, at: Date.now() };
+      void checkIn(value);
     }
     setTimeout(loop, 250);
   };
@@ -226,9 +249,10 @@ function stopCamera(): void {
   (ui.video.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
   ui.video.srcObject = null;
   ui.video.hidden = true;
+  ui.camera.textContent = "相機";
 }
 
-ui.camera.hidden = typeof BarcodeDetector === "undefined";
+ui.camera.hidden = !navigator.mediaDevices?.getUserMedia;
 ui.camera.addEventListener("click", () => {
   if (ui.video.srcObject) stopCamera();
   else startCamera().catch((err) => showResult("error", `無法開啟相機：${err instanceof Error ? err.message : err}`));
