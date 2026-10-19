@@ -1,0 +1,29 @@
+{
+  "name": "rollcall",
+  "version": "0.0.0",
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "typecheck": "tsc",
+    "test": "node --test \"core/**/*.test.ts\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuomartin/rollcall.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/kuomartin/rollcall/issues"
+  },
+  "homepage": "https://github.com/kuomartin/rollcall#readme",
+  "devDependencies": {
+    "@google/clasp": "^3.4.1",
+    "@types/google-apps-script": "^2.0.13",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
+}
