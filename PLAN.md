@@ -11,7 +11,7 @@
 | 0.1 | 單一裝置連續 10 筆，每筆總耗時 p50 / p95 | 967 / 1599 ms | 2193 / 3477 ms | 公式讓單筆耗時約 2 倍，多出來的主要在讀取時等重算（`read` 410 → 1434 ms） |
 | 0.2 | 8 台裝置併發各 3 筆，走真正的 `checkInStudent`（含 lock），每筆耗時 | 0.9–3.0 s，全部跑完 9 s | 1.0–14.9 s，全部跑完 37 s | **30 秒延遲的成因：公式重算 × lock 排隊。** 拿掉公式後，併發下仍維持 1–3 s。§5 照計畫移除 |
 | 0.3 | 沒有公式時的基本成本 | 約 1 s／筆 | — | 即使沒有公式，每筆仍約 1 秒，所以 §3 的批次寫入與 §4 的前端先回應仍然必要 |
-| 0.4 | `fetch` → `doPost` 可行性 | 桌機 Chromium 152、Android Brave（Chromium 155）：POST `text/plain` 讀回 JSON 約 1.2 s、GET 800 列名單（33.9 KB）約 1.0–1.2 s、連續 POST 每次 0.8–1.0 s、3 次併發全部成功 | — | Chromium 系列可行，§4.4 採用；iOS Safari 尚未驗證，測試頁 `spike/fetch-dopost/` |
+| 0.4 | `fetch` → `doPost` 可行性 | 桌機 Chromium 152、Android Brave（Chromium 155）：POST `text/plain` 讀回 JSON 約 1.2 s、GET 800 列名單（33.9 KB）約 1.0–1.2 s、連續 POST 每次 0.8–1.0 s、3 次併發全部成功 | — | 可行，§4.4 採用。iOS 不在支援範圍 |
 
 ## 1. Repo 與建置
 
@@ -59,7 +59,7 @@
 | 4.1c | 用手機報到 | 本機查無 → server 查詢 → 回傳該列的快取欄位 → 渲染並補進快取 | 只有這種報到要等約 1 秒 |
 | 4.2 | 名單版本 | 集中 Web App 對每份已註冊的試算表建立 installable `onEdit` trigger，觸發時遞增該活動的 `rosterVersion` | 名單現場被改也會同步 |
 | 4.3 | 本機查無 | 退回 server 查一次，查到補進快取 | 名單過時的保險 |
-| 4.4 | 傳輸 | `fetch` → `doPost`，移除 Bridge iframe（0.4；iOS Safari 待驗證） | 少一層 handshake 與重複轉接碼 |
+| 4.4 | 傳輸 | `fetch` → `doPost`，移除 Bridge iframe（0.4） | 少一層 handshake 與重複轉接碼 |
 | 4.5 | 佇列 | 記憶體佇列；畫面顯示未送出筆數 | 斷網不報到，不需 IndexedDB |
 | 4.6 | 斷線規則 | 最近一次同步「失敗」或（>10 秒無回應且 `navigator.onLine === false`）→ 禁止報到；只是慢 → 顯示「同步延遲」照常報到 | 避免偶發慢回應誤鎖入口 |
 | 4.7 | 側邊欄 | shim 的選單開啟側邊欄，以 iframe 嵌入掃描頁（帶活動 token） | 側邊欄和手機用同一份掃描頁 |
