@@ -13,7 +13,7 @@ function escape(s: string): string {
 
 const STYLE = `<style>
   body { font-family: system-ui, sans-serif; margin: 12px; line-height: 1.5; }
-  textarea, input[type=text] { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
+  textarea, input[type=text], select { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; }
   button { font: inherit; padding: 6px 14px; margin-top: 8px; }
   .error { color: #c62828; } .ok { color: #2e7d32; }
   code { word-break: break-all; }
@@ -87,5 +87,38 @@ export const SETTINGS_DIALOG = `${STYLE}
       })
       .withFailureHandler((e) => { $("msg").textContent = e.message; $("msg").className = "error"; })
       .storeSettings($("template").value, $("sessions").value);
+  });
+</script>`;
+
+export const CLEAR_DIALOG = `${STYLE}
+<p>清除一個場次的所有報到紀錄，以及學員名單上該場次的報到時間，用於活動前清掉測試掃描。<strong>無法復原。</strong></p>
+<p>確定沒有入口正在報到再清除。清除後，所有開著的掃描頁都要重新整理，否則仍會把清掉的學員當成已報到。</p>
+<label>場次</label>
+<select id="session"></select>
+<label>輸入場次名稱以確認</label>
+<input type="text" id="confirm" autocomplete="off">
+<button id="clear" disabled>清除</button>
+<p id="msg"></p>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const check = () => { $("clear").disabled = $("confirm").value.trim() !== $("session").value; };
+  google.script.run.withSuccessHandler((sessions) => {
+    $("session").replaceChildren(...sessions.map((s) => new Option(s, s)));
+    check();
+  }).loadSessions();
+  $("session").addEventListener("change", check);
+  $("confirm").addEventListener("input", check);
+  $("clear").addEventListener("click", () => {
+    $("clear").disabled = true;
+    $("msg").textContent = "清除中…";
+    $("msg").className = "";
+    google.script.run
+      .withSuccessHandler((r) => {
+        $("msg").textContent = r.ok ? "已清除。請重新整理所有開著的掃描頁。" : r.error;
+        $("msg").className = r.ok ? "ok" : "error";
+        $("confirm").value = "";
+      })
+      .withFailureHandler((e) => { $("msg").textContent = e.message; $("msg").className = "error"; check(); })
+      .clearCheckIns($("session").value, $("confirm").value);
   });
 </script>`;

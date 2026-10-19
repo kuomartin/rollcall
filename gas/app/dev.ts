@@ -1,9 +1,9 @@
-// 只在 `npm run build -- --dev` 的建置裡存在：讓端到端測試能建立假名單、讀回寫入結果。
+// 只在 `npm run build -- --dev` 的建置裡存在：讓端到端測試能建立假名單、讀回寫入結果、清除場次。
 // 正式建置時 __DEV__ 為 false，doPost 不會呼叫這裡，esbuild 會把整段移除。
 
 import { saveSettings } from "./settings.ts";
 import { ensureLogSheet, LOG_HEADERS, ROSTER_SHEET } from "./sheets.ts";
-import { ensureMarkColumns } from "./store.ts";
+import { clearSession, ensureMarkColumns } from "./store.ts";
 
 const DEV_HEADERS = ["學員代號", "姓名", "手機", "班級"];
 
@@ -45,8 +45,12 @@ function dump(): unknown {
 }
 
 export function devHandle(body: unknown): unknown {
-  const b = body as { action?: string; count?: number; sessions?: string[] };
+  const b = body as { action?: string; count?: number; sessions?: string[]; session?: string };
   if (b.action === "devSeed") return seed(b.count ?? 40, b.sessions ?? ["報到"]);
   if (b.action === "devDump") return dump();
+  if (b.action === "devClear" && b.session) {
+    clearSession(b.session);
+    return { cleared: b.session };
+  }
   return undefined;
 }

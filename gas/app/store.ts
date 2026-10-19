@@ -187,3 +187,31 @@ export function ensureMarkColumns(sessions: string[]): string[] {
   }
   return headers;
 }
+
+/**
+ * 清除一個場次的報到紀錄與學員名單上的報到時間，用於活動前清掉測試掃描。理由見 docs/adr/0007-clearing-a-session-keeps-seq-and-scan-ids.md。
+ * seq 與已見過的 scanId 不動；計數器直接設成第 2 列，下一次同步不必在 lock 內讀 Sheet。
+ */
+export function clearSession(session: string): void {
+  withLock(() => {
+    const log = ensureLogSheet(session);
+    if (log.getMaxRows() > 1) log.getRange(2, 1, log.getMaxRows() - 1, log.getMaxColumns()).clearContent();
+
+    const roster = rosterSheet();
+    const headers = roster
+      .getRange(1, 1, 1, Math.max(1, roster.getLastColumn()))
+      .getValues()[0]
+      .map((h) => String(h).trim());
+    const col = headers.indexOf(markColumnHeader(session));
+    if (col !== -1 && roster.getMaxRows() > 1) roster.getRange(2, col + 1, roster.getMaxRows() - 1, 1).clearContent();
+    SpreadsheetApp.flush();
+
+    PropertiesService.getScriptProperties().setProperty(rowKey(session), "2");
+    const cache = CacheService.getScriptCache();
+    const recent = cache.get(RECENT_KEY);
+    if (recent) {
+      const kept = (JSON.parse(recent) as LogEntry[]).filter((e) => e.session !== session);
+      cache.put(RECENT_KEY, JSON.stringify(kept), CACHE_TTL_S);
+    }
+  });
+}

@@ -7,9 +7,9 @@ import { handle } from "./api.ts";
 import { devHandle } from "./dev.ts";
 import { bumpRosterVersion, deploymentId, getSettings, parseSessions, saveSettings, storeDeploymentId } from "./settings.ts";
 import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
-import { ensureMarkColumns } from "./store.ts";
+import { clearSession, ensureMarkColumns } from "./store.ts";
 import { ensureWorkbook } from "./workbook.ts";
-import { NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
+import { CLEAR_DIALOG, NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
 
 function json(body: ApiResponse<unknown>): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
@@ -45,6 +45,8 @@ export function onOpen(): void {
     .addItem("顯示報到側邊欄", "showSidebar")
     .addItem("工作人員連結", "showStaffLink")
     .addItem("設定", "showSettings")
+    .addSeparator()
+    .addItem("清除報到紀錄", "showClearDialog")
     .addToUi();
 }
 
@@ -91,6 +93,23 @@ export function storeSettings(template: string, sessionsText: string): { ok: tru
   saveSettings({ template, sessions });
   sessions.forEach(ensureLogSheet);
   ensureMarkColumns(sessions);
+  return { ok: true };
+}
+
+export function showClearDialog(): void {
+  const html = HtmlService.createHtmlOutput(CLEAR_DIALOG).setWidth(480).setHeight(380);
+  SpreadsheetApp.getUi().showModalDialog(html, "清除報到紀錄");
+}
+
+export function loadSessions(): string[] {
+  return getSettings().sessions;
+}
+
+/** 對話框要求輸入場次名稱確認；這裡再驗一次，避免誤清。 */
+export function clearCheckIns(session: string, confirm: string): { ok: true } | { ok: false; error: string } {
+  if (!getSettings().sessions.includes(session)) return { ok: false, error: `沒有「${session}」這個場次` };
+  if (confirm.trim() !== session) return { ok: false, error: "輸入的場次名稱不符" };
+  clearSession(session);
   return { ok: true };
 }
 
