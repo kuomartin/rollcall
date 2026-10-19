@@ -122,13 +122,30 @@ function renderRecent(): void {
   ui.recent.replaceChildren(
     ...entries.map((e) => {
       const li = document.createElement("li");
-      const time = new Date(e.at).toLocaleTimeString("zh-TW", { hour12: false });
+      const button = document.createElement("button");
+      button.type = "button";
       const name = rosterByCode.get(e.code)?.["姓名"] ?? "";
       const mine = e.deviceId === client.deviceId;
-      li.textContent = `${time}　${e.code}　${name}${mine ? "" : "　（其他入口）"}`;
+      button.textContent = `${clock(e.at)}　${e.code}　${name}${mine ? "" : "　（其他入口）"}`;
+      button.addEventListener("click", () => recall(e));
+      li.append(button);
       return li;
     }),
   );
+}
+
+function clock(at: number): string {
+  return new Date(at).toLocaleTimeString("zh-TW", { hour12: false });
+}
+
+/** 點最近報到的一筆：重新顯示當時的報到成功訊息，用目前的名單快取與模板渲染。 */
+function recall(e: LogEntry): void {
+  const row = rosterByCode.get(e.code);
+  if (!config || !row) {
+    showResult("info", `${clock(e.at)} 報到：${e.code}`);
+    return;
+  }
+  showResult("ok", `${clock(e.at)} 報到｜${renderTemplate(config.template, row)}`);
 }
 
 function render(): void {
