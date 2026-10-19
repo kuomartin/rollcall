@@ -1,4 +1,4 @@
-// doPost 的動作（PLAN 3、4.1、4.1c）。
+// doPost 的動作：bootstrap、lookup、sync。
 
 import type { ApiRequest, BootstrapResult, LookupResult, SyncResult } from "../../core/api.ts";
 import { buildRosterCache, cacheFields, cacheRow, findRow } from "../../core/roster.ts";

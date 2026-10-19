@@ -1,7 +1,7 @@
-// 同步的伺服器端邏輯（PLAN 3）：去重、寫入、回傳 cursor 之後的紀錄。
+// 同步的伺服器端邏輯（docs/adr/0003-local-first-check-in-with-one-writer.md）：去重、寫入、回傳 cursor 之後的紀錄。
 // 儲存透過 LogStore／RosterStore 兩個 port，Apps Script 端以 Sheet 實作，測試以記憶體實作。
 
-/** 一次掃描。scanId 由前端產生，重送時不變，讓寫入冪等（PLAN 2.3）。 */
+/** 一次掃描。scanId 由前端產生，重送時不變，讓寫入冪等。 */
 export interface Scan {
   scanId: string;
   code: string;
@@ -10,7 +10,7 @@ export interface Scan {
   at: number;
 }
 
-/** 報到 log 的一列。seq 單調遞增，作為同步 cursor（PLAN 3.5）。 */
+/** 報到 log 的一列。seq 單調遞增，作為同步 cursor。 */
 export interface LogEntry extends Scan {
   seq: number;
   deviceId: string;
@@ -39,7 +39,7 @@ export interface LogStore {
 }
 
 export interface RosterStore {
-  /** 更新學員名單上的「{session} 報到時間」欄（PLAN 5.3）。 */
+  /** 更新學員名單上的「{session} 報到時間」欄（docs/adr/0005-no-formulas-in-the-check-in-path.md）。 */
   markCheckedIn(session: string, code: string, at: number): void;
 }
 

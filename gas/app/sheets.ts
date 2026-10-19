@@ -1,4 +1,4 @@
-// 試算表的分頁結構（PLAN 5.1）：學員名單與各場次的報到分頁。
+// 試算表的分頁結構：學員名單與各場次的報到分頁。
 
 import { CODE_FIELD, type RosterTable } from "../../core/roster.ts";
 

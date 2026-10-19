@@ -1,4 +1,4 @@
-// 掃描端的同步狀態（PLAN 4.5、4.6）：待送佇列、cursor、伺服器回傳的紀錄、連線判定。
+// 掃描端的同步狀態（docs/adr/0003-local-first-check-in-with-one-writer.md）：待送佇列、cursor、伺服器回傳的紀錄、連線判定。
 // 不碰網路與計時器；由 web 層決定何時 request()、把回應交給 receive()。
 
 import type { LogEntry, Scan, SyncRequest, SyncResponse } from "./sync.ts";

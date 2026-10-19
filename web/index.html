@@ -10,12 +10,20 @@
         --ok-bg: #e6f4ea; --ok-fg: #1e6b34; --err-bg: #fdecea; --err-fg: #b3261e;
         --warn-bg: #fff4e5; --warn-fg: #8a4b00; --accent: #1f6feb;
       }
+      /* 預設跟隨系統；data-theme 由右上角的切換鈕設定，覆蓋系統設定。 */
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-theme="light"]) {
           --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
           --ok-bg: #12301c; --ok-fg: #7ee2a0; --err-bg: #3b1613; --err-fg: #ffa198;
           --warn-bg: #3a2a10; --warn-fg: #f2c46d; --accent: #4493f8;
+          color-scheme: dark;
         }
+      }
+      :root[data-theme="dark"] {
+        --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
+          --ok-bg: #12301c; --ok-fg: #7ee2a0; --err-bg: #3b1613; --err-fg: #ffa198;
+          --warn-bg: #3a2a10; --warn-fg: #f2c46d; --accent: #4493f8;
+        color-scheme: dark;
       }
       * { box-sizing: border-box; }
       body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin-inline: auto; }
@@ -28,6 +36,7 @@
       .status.delayed { background: var(--warn-bg); color: var(--warn-fg); }
       .status.offline { background: var(--err-bg); color: var(--err-fg); }
       #pending { color: var(--muted); font-size: 0.85em; }
+      #theme { margin-left: auto; padding: 4px 10px; font-size: 0.85em; }
       form { display: flex; gap: 8px; margin-top: 12px; }
       form input { flex: 1; min-width: 0; font-size: 1.2em; }
       form button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -46,6 +55,7 @@
       <select id="session" aria-label="場次"></select>
       <span id="status" class="status offline">連線中…</span>
       <span id="pending"></span>
+      <button type="button" id="theme" aria-label="切換深色模式"></button>
     </header>
     <form id="form" autocomplete="off">
       <input id="input" inputmode="text" placeholder="學員代號或手機" aria-label="學員代號或手機" />

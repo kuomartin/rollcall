@@ -8,6 +8,7 @@ import { devHandle } from "./dev.ts";
 import { bumpRosterVersion, deploymentId, getSettings, parseSessions, saveSettings, storeDeploymentId } from "./settings.ts";
 import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
 import { ensureMarkColumns } from "./store.ts";
+import { ensureWorkbook } from "./workbook.ts";
 import { NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
 
 function json(body: ApiResponse<unknown>): GoogleAppsScript.Content.TextOutput {
@@ -38,6 +39,7 @@ export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
 }
 
 export function onOpen(): void {
+  ensureWorkbook();
   SpreadsheetApp.getUi()
     .createMenu("報到")
     .addItem("顯示報到側邊欄", "showSidebar")
@@ -75,7 +77,7 @@ export function loadSettings(): { template: string; sessions: string[]; headers:
   return { ...getSettings(), headers: readRoster().headers.filter(Boolean) };
 }
 
-/** 模板引用了學員名單沒有的欄位就不儲存（PLAN 2.5a）。 */
+/** 模板引用了學員名單沒有的欄位就不儲存。 */
 export function storeSettings(template: string, sessionsText: string): { ok: true } | { ok: false; error: string } {
   const headers = readRoster().headers;
   const missing = missingRequired(headers);
@@ -92,7 +94,7 @@ export function storeSettings(template: string, sessionsText: string): { ok: tru
   return { ok: true };
 }
 
-/** 側邊欄自動跳轉（PLAN 4.8）。 */
+/** 側邊欄自動跳轉：掃描頁同步確認後通知側邊欄，跳到學員名單的那一列。 */
 export function jumpTo(code: string): void {
   const roster = readRoster();
   const col = roster.headers.indexOf(CODE_FIELD);

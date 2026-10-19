@@ -1,4 +1,4 @@
-// 同步的儲存實作（PLAN 3.2、3.3、3.5）。
+// 同步的儲存實作，設計理由見 docs/adr/0004-sync-lock-only-guards-bookkeeping.md。
 //
 // lock 只保護記帳：seq、每個報到分頁下一個可寫的列、近期紀錄與已見過的 scanId（CacheService）。
 // 寫進 Sheet 的動作在放開 lock 之後進行：每次同步在 lock 內預留不重疊的列範圍，各自寫入不會互相覆蓋。

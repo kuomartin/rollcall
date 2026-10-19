@@ -1,4 +1,4 @@
-// 掃描頁（PLAN 4）：名單快取本機比對、先回應再背景同步、斷線禁止報到。
+// 掃描頁（docs/adr/0003-local-first-check-in-with-one-writer.md）：名單快取本機比對、先回應再背景同步、斷線禁止報到。
 
 import type { ApiRequest, ApiResponse, BootstrapResult, LookupResult, SyncResult } from "../core/api.ts";
 import { SyncClient, connectivity, type Connectivity } from "../core/client.ts";
@@ -28,7 +28,39 @@ const ui = {
   video: $<HTMLVideoElement>("video"),
   result: $("result"),
   recent: $<HTMLOListElement>("recent"),
+  theme: $<HTMLButtonElement>("theme"),
 };
+
+type Theme = "auto" | "light" | "dark";
+const THEMES: Theme[] = ["auto", "light", "dark"];
+const THEME_LABEL: Record<Theme, string> = { auto: "外觀：自動", light: "外觀：淺色", dark: "外觀：深色" };
+
+function applyTheme(theme: Theme): void {
+  if (theme === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  ui.theme.textContent = THEME_LABEL[theme];
+}
+
+function storedTheme(): Theme {
+  try {
+    const t = localStorage.getItem("rollcall.theme");
+    return THEMES.includes(t as Theme) ? (t as Theme) : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+let theme = storedTheme();
+applyTheme(theme);
+ui.theme.addEventListener("click", () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  applyTheme(theme);
+  try {
+    localStorage.setItem("rollcall.theme", theme);
+  } catch {
+    // 無痕模式等情況存不了，只影響下次開頁。
+  }
+});
 
 function storedDeviceId(): string {
   const fresh = `dev-${crypto.randomUUID().slice(0, 8)}`;
@@ -124,7 +156,7 @@ function schedule(delay?: number): void {
   timer = setTimeout(syncOnce, delay ?? (busy ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS));
 }
 
-/** 側邊欄：自己的報到同步確認後，請外層跳到學員名單的那一列（PLAN 4.8）。 */
+/** 側邊欄：自己的報到同步確認後，請外層跳到學員名單的那一列。 */
 function notifyJump(acked: string[]): void {
   if (!inSidebar || !acked.length) return;
   const last = own.filter((e) => acked.includes(e.scanId)).at(-1);
@@ -155,7 +187,7 @@ async function syncOnce(): Promise<void> {
 async function resolve(query: string): Promise<CacheRow | null> {
   const local = rosterByCode.get(query);
   if (local) return local;
-  // 本機查無：可能是手機號碼，或名單剛改過（PLAN 4.1c、4.3）。
+  // 本機查無：可能是手機號碼，或名單剛改過。
   const { row } = await call<LookupResult>({ action: "lookup", query });
   if (row) rosterByCode.set(row[CODE_FIELD], row);
   return row;

@@ -1,4 +1,4 @@
-// Script Properties 裡的設定與計數器（PLAN 5.4）。只有試算表擁有者能改。
+// Script Properties 裡的設定、名單版本與部署 ID。只有試算表擁有者能改。
 
 const KEY = {
   template: "template",
@@ -44,7 +44,7 @@ export function rosterVersion(): string {
   return props().getProperty(KEY.rosterVersion) ?? "0";
 }
 
-/** 名單或模板變了：各裝置下次同步時重抓名單快取（PLAN 4.2）。 */
+/** 名單或模板變了：各裝置下次同步時重抓名單快取。 */
 export function bumpRosterVersion(): void {
   props().setProperty(KEY.rosterVersion, String(Date.now()));
 }

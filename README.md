@@ -2,7 +2,7 @@
 
 以 Google 試算表為名單與紀錄的活動報到系統：掃描在本機即時判定，Apps Script 批次寫入並同步各入口。
 
-設計與決策見 [PLAN.md](PLAN.md)。
+用語見 [CONTEXT.md](CONTEXT.md)，設計決策見 [docs/adr/](docs/adr/)。
 
 ## 給主辦方
 
@@ -40,4 +40,11 @@ npm run typecheck
 npm run build
 ```
 
-`npm run build -- --dev` 多出端到端測試用的 `devSeed`／`devDump` 動作，只推到測試試算表，不要推到正式範本。推送用 `npx clasp push`，`.clasp.json` 的 `rootDir` 指向 `dist/gas/app`。
+推送 Apps Script 用 `npx clasp -P <專案檔> push`，專案檔的 `rootDir` 指向 `dist/gas/app`：
+
+| 專案檔 | 對象 | 建置 |
+|---|---|---|
+| `.clasp.template.json` | 範本試算表 | `npm run build` |
+| `.clasp.test.json` | 測試試算表 `rollcall-test` | `npm run build -- --dev`，多出端到端測試用的 `devSeed`／`devDump` |
+
+兩個專案檔都不進版控。

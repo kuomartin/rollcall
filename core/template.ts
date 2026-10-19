@@ -1,8 +1,8 @@
-// 報到成功訊息的 `{{欄位}}` 模板（PLAN 2.5、2.5a、2.5b）。
+// 報到成功訊息的 `{{欄位}}` 模板。
 
 const PLACEHOLDER = /\{\{([^{}]+)\}\}/g;
 
-/** 模板引用到的欄位名稱，依出現順序、不重複。名單快取只帶這些欄位（PLAN 4.1a）。 */
+/** 模板引用到的欄位名稱，依出現順序、不重複。名單快取只帶這些欄位。 */
 export function referencedFields(template: string): string[] {
   const seen = new Set<string>();
   for (const match of template.matchAll(PLACEHOLDER)) seen.add(match[1].trim());

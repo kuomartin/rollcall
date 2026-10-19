@@ -1,4 +1,4 @@
-// 學員名單：前端名單快取的內容（PLAN 4.1a、4.1b）與識別碼查詢（PLAN 4.1c）。
+// 學員名單：掃描頁名單快取的內容（docs/adr/0006-phone-numbers-stay-on-the-server.md）與識別碼查詢。
 
 import { referencedFields } from "./template.ts";
 
