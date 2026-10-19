@@ -19,7 +19,7 @@ function fakeRoster(): RosterStore & { marks: Array<[string, string, number]> } 
 }
 
 function scan(scanId: string, code: string, at = 1000, session = "5/22報到"): Scan {
-  return { scanId, code, session, at, snapshot: { 姓名: "張志豪" } };
+  return { scanId, code, session, at };
 }
 
 test("appends new scans with increasing seq and returns the new cursor", () => {

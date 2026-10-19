@@ -1,4 +1,4 @@
-// 同步中心的伺服器端邏輯（PLAN 3）：去重、寫入、回傳其他裝置的紀錄。
+// 同步的伺服器端邏輯（PLAN 3）：去重、寫入、回傳其他裝置的紀錄。
 // 儲存透過 LogStore／RosterStore 兩個 port，Apps Script 端以 Sheet 實作，測試以記憶體實作。
 
 /** 一次掃描。scanId 由前端產生，重送時不變，讓寫入冪等（PLAN 2.3）。 */
@@ -8,8 +8,6 @@ export interface Scan {
   session: string;
   /** epoch ms，以掃描當下的裝置時間為準。 */
   at: number;
-  /** 報到當下的學員欄位快照，直接寫進 log（PLAN 5.2）。 */
-  snapshot: Record<string, string>;
 }
 
 /** 報到 log 的一列。seq 單調遞增，作為同步 cursor（PLAN 3.5）。 */

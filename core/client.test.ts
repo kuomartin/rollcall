@@ -4,7 +4,7 @@ import { SyncClient, connectivity } from "./client.ts";
 import type { LogEntry, Scan } from "./sync.ts";
 
 function scan(scanId: string): Scan {
-  return { scanId, code: "B001", session: "5/22報到", at: 1000, snapshot: {} };
+  return { scanId, code: "B001", session: "5/22報到", at: 1000 };
 }
 
 function entry(seq: number, scanId: string, deviceId = "gate-2"): LogEntry {

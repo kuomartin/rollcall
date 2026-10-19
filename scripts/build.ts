@@ -1,21 +1,25 @@
-// 建置：gas/central、gas/shim 各打包成一支 Apps Script 檔；web 打包成靜態頁。輸出到 dist/。
+// 建置：gas/app 打包成一支 Apps Script 檔，web 打包成靜態頁，輸出到 dist/。
+// `--dev` 時 __DEV__ 為 true，Apps Script 端多出端到端測試用的動作（gas/app/dev.ts）。
 //
 // Apps Script 只認得頂層函式宣告，而 esbuild 的 IIFE 會把 export 包進一個全域物件。
-// 所以每個進入點 export 的函式，都在檔尾補一個同名的頂層轉呼叫函式。
+// 所以 gas/app/main.ts export 的每個函式，都在檔尾補一個同名的頂層轉呼叫函式。
 
 import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const GLOBAL = "__rollcall";
+const dev = process.argv.includes("--dev");
 
-async function buildGas(name: string): Promise<void> {
-  const outdir = `dist/gas/${name}`;
+async function buildGas(): Promise<void> {
+  const outdir = "dist/gas/app";
   mkdirSync(outdir, { recursive: true });
   const common = {
-    entryPoints: [`gas/${name}/main.ts`],
+    entryPoints: ["gas/app/main.ts"],
     bundle: true,
     target: "es2020",
     charset: "utf8",
+    define: { __DEV__: String(dev) },
+    minifySyntax: true,
     write: false,
   } satisfies esbuild.BuildOptions;
   // metafile 只在 ESM 輸出時列出 exports，所以先用 ESM 取得名單，再輸出 IIFE。
@@ -26,7 +30,7 @@ async function buildGas(name: string): Promise<void> {
     .map((fn) => `function ${fn}() { return ${GLOBAL}.${fn}.apply(this, arguments); }`)
     .join("\n");
   writeFileSync(`${outdir}/Code.js`, `${result.outputFiles![0].text}\n${stubs}\n`);
-  copyFileSync(`gas/${name}/appsscript.json`, `${outdir}/appsscript.json`);
+  copyFileSync("gas/app/appsscript.json", `${outdir}/appsscript.json`);
 }
 
 async function buildWeb(): Promise<void> {
@@ -34,7 +38,7 @@ async function buildWeb(): Promise<void> {
     entryPoints: ["web/main.ts"],
     bundle: true,
     format: "esm",
-    target: "es2020",
+    target: "es2022",
     charset: "utf8",
     outfile: "dist/web/main.js",
   });
@@ -42,4 +46,4 @@ async function buildWeb(): Promise<void> {
 }
 
 rmSync("dist", { recursive: true, force: true });
-await Promise.all([buildGas("central"), buildGas("shim"), buildWeb()]);
+await Promise.all([buildGas(), buildWeb()]);

@@ -4,9 +4,58 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>報到</title>
+    <style>
+      :root {
+        --bg: #fafafa; --fg: #1f2328; --muted: #656d76; --line: #d0d7de;
+        --ok-bg: #e6f4ea; --ok-fg: #1e6b34; --err-bg: #fdecea; --err-fg: #b3261e;
+        --warn-bg: #fff4e5; --warn-fg: #8a4b00; --accent: #1f6feb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
+          --ok-bg: #12301c; --ok-fg: #7ee2a0; --err-bg: #3b1613; --err-fg: #ffa198;
+          --warn-bg: #3a2a10; --warn-fg: #f2c46d; --accent: #4493f8;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin-inline: auto; }
+      body.sidebar { padding: 8px; font-size: 14px; }
+      header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      select, input, button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+      select { flex: 1; min-width: 0; }
+      .status { padding: 4px 10px; border-radius: 999px; font-size: 0.85em; }
+      .status.ok { background: var(--ok-bg); color: var(--ok-fg); }
+      .status.delayed { background: var(--warn-bg); color: var(--warn-fg); }
+      .status.offline { background: var(--err-bg); color: var(--err-fg); }
+      #pending { color: var(--muted); font-size: 0.85em; }
+      form { display: flex; gap: 8px; margin-top: 12px; }
+      form input { flex: 1; min-width: 0; font-size: 1.2em; }
+      form button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+      video { width: 100%; margin-top: 12px; border-radius: 8px; }
+      .result { margin-top: 12px; padding: 16px; border-radius: 8px; font-size: 1.25em; font-weight: 600; min-height: 3.2em; }
+      .result.ok { background: var(--ok-bg); color: var(--ok-fg); }
+      .result.error { background: var(--err-bg); color: var(--err-fg); }
+      .result.info { color: var(--muted); font-weight: 400; font-size: 1em; }
+      h2 { font-size: 0.95em; color: var(--muted); margin: 20px 0 4px; }
+      ol { list-style: none; padding: 0; margin: 0; }
+      li { padding: 6px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    </style>
   </head>
   <body>
-    <main id="app"></main>
+    <header>
+      <select id="session" aria-label="場次"></select>
+      <span id="status" class="status offline">連線中…</span>
+      <span id="pending"></span>
+    </header>
+    <form id="form" autocomplete="off">
+      <input id="input" inputmode="text" placeholder="學員代號或手機" aria-label="學員代號或手機" />
+      <button type="button" id="camera" hidden>相機</button>
+      <button type="submit">報到</button>
+    </form>
+    <video id="video" playsinline muted hidden></video>
+    <div id="result" class="result info"></div>
+    <h2>最近報到</h2>
+    <ol id="recent"></ol>
     <script type="module" src="main.js"></script>
   </body>
 </html>
