@@ -74,6 +74,16 @@
 | 5.3 | 公式 1（最近報到時間） | `INDIRECT`（volatile）＋每列 `QUERY` | 刪除，由 3.2 寫回學員名單；該欄由程式維護 | 0.2 已確認 |
 | 5.4 | 設定 | 每份 script 的 Script Properties：`msgTemplate`、`checkInSheets` | 集中 Web App 的 Script Properties，以活動為 key：`{sheetId, token, msgTemplate, sessions, rosterVersion}` | — |
 
+## 5a. Adapter 設計修正（待確認）
+
+| # | PLAN 原本 | 問題 | 改成 |
+|---|---|---|---|
+| A1 | 註冊活動：shim 把 sheet ID 送到集中 Web App（6.2） | 集中 Web App 以部署者身分執行、匿名可呼叫。任何人只要知道部署者某份試算表的 ID，就能註冊它，再用 roster 端點把內容讀走 | shim 先在試算表寫入一次性 nonce，再呼叫註冊；集中 Web App 打開該試算表核對 nonce 才發 token。只有能編輯該試算表的人寫得進 nonce |
+| A2 | 活動設定存在集中 Web App 的 Script Properties（5.4） | 設定要從側邊欄改，但集中 Web App 無法確認呼叫者是不是編輯者 | 設定（模板、場次、`rosterVersion`）存在試算表的隱藏分頁 `_rollcall`。能改設定的人就是能編輯試算表的人。集中 Web App 只存 `token → sheetId`；讀設定時以 `CacheService` 快取 30 秒 |
+| A3 | `rosterVersion` 由集中 Web App 建立 installable `onEdit` trigger（4.2） | 每個 script 每位使用者最多 20 個 trigger，等於同時最多 20 場活動 | shim 的 simple `onEdit`：編輯到學員名單時遞增 `_rollcall` 裡的版本。simple trigger 不需要授權；script 自己的寫入不會觸發 |
+| A4 | 快照由前端放進 `Scan.snapshot`（2.3） | 前端只有模板引用的欄位，而報到分頁要的欄位應由主辦方決定 | 沿用舊公式 2 的語意：報到分頁固定欄位之後的標題列，就是要展開的學員欄位；集中 Web App 寫入時從學員名單查出填入。`Scan` 不再帶 snapshot |
+| A5 | `seq` 在 log 內遞增（3.5） | 每個場次是一個分頁，各分頁各自遞增的話，cursor 要變成每個場次一個 | `seq` 為整場活動共用的計數器，存在集中 Web App 的 Script Properties，在 lock 內遞增。`others` 包含所有場次，前端依目前場次過濾 |
+
 ## 6. 遷移
 
 | # | 項目 | 做法 |
