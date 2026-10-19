@@ -82,7 +82,8 @@ function renderStatus(): void {
 
 function renderRecent(): void {
   const session = ui.session.value;
-  const entries = [...own, ...client.others()]
+  const ownIds = new Set(own.map((e) => e.scanId));
+  const entries = [...own, ...client.entries().filter((e) => !ownIds.has(e.scanId))]
     .filter((e) => e.session === session)
     .sort((a, b) => b.at - a.at)
     .slice(0, RECENT_LIMIT);
@@ -116,9 +117,11 @@ async function refreshBootstrap(): Promise<void> {
   applyBootstrap(await call<BootstrapResult>({ action: "bootstrap" }));
 }
 
+/** 有待送掃描或離線時用短間隔：離線時要盡快恢復，不能等閒置間隔。 */
 function schedule(delay?: number): void {
   clearTimeout(timer);
-  timer = setTimeout(syncOnce, delay ?? (client.pending().length ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS));
+  const busy = client.pending().length > 0 || state() === "offline";
+  timer = setTimeout(syncOnce, delay ?? (busy ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS));
 }
 
 /** 側邊欄：自己的報到同步確認後，請外層跳到學員名單的那一列（PLAN 4.8）。 */
@@ -163,6 +166,7 @@ async function checkIn(raw: string): Promise<void> {
   if (!query || !config) return;
   if (state() === "offline") {
     showResult("error", "離線中，禁止報到。請確認網路後再試。");
+    if (inFlightSince === null) schedule(0);
     return;
   }
   let row: CacheRow | null;

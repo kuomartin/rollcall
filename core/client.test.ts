@@ -22,7 +22,7 @@ test("acked scans leave the queue; unacked ones stay for the next request", () =
   const c = new SyncClient("gate-1");
   c.enqueue(scan("s1"));
   c.enqueue(scan("s2"));
-  c.receive({ cursor: 1, acked: ["s1"], others: [] });
+  c.receive({ cursor: 1, acked: ["s1"], entries: [] });
   assert.deepEqual(c.pending().map((s) => s.scanId), ["s2"]);
 });
 
@@ -31,22 +31,22 @@ test("a scan enqueued while a request is in flight is kept after the response", 
   c.enqueue(scan("s1"));
   c.request();
   c.enqueue(scan("s2"));
-  c.receive({ cursor: 1, acked: ["s1"], others: [] });
+  c.receive({ cursor: 1, acked: ["s1"], entries: [] });
   assert.deepEqual(c.pending().map((s) => s.scanId), ["s2"]);
 });
 
-test("receive advances the cursor and collects other devices' entries once", () => {
+test("receive advances the cursor and collects each entry once", () => {
   const c = new SyncClient("gate-1");
-  c.receive({ cursor: 2, acked: [], others: [entry(1, "a"), entry(2, "b")] });
-  c.receive({ cursor: 2, acked: [], others: [entry(2, "b")] });
+  c.receive({ cursor: 2, acked: [], entries: [entry(1, "a"), entry(2, "b")] });
+  c.receive({ cursor: 2, acked: [], entries: [entry(2, "b")] });
   assert.equal(c.request().cursor, 2);
-  assert.deepEqual(c.others().map((e) => e.scanId), ["a", "b"]);
+  assert.deepEqual(c.entries().map((e) => e.scanId), ["a", "b"]);
 });
 
 test("the cursor never moves backwards", () => {
   const c = new SyncClient("gate-1");
-  c.receive({ cursor: 5, acked: [], others: [] });
-  c.receive({ cursor: 3, acked: [], others: [] });
+  c.receive({ cursor: 5, acked: [], entries: [] });
+  c.receive({ cursor: 3, acked: [], entries: [] });
   assert.equal(c.request().cursor, 5);
 });
 

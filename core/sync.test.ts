@@ -52,23 +52,31 @@ test("duplicate scanIds within one batch are appended once", () => {
   assert.equal(log.entries.length, 1);
 });
 
-test("returns only other devices' entries after the cursor", () => {
+test("returns entries after the cursor except the scans in this request", () => {
   const log = fakeLog();
   const roster = fakeRoster();
   applySync(log, roster, { deviceId: "gate-2", cursor: 0, scans: [scan("a", "B010")] });
   const res = applySync(log, roster, { deviceId: "gate-1", cursor: 0, scans: [scan("b", "B011")] });
-  assert.deepEqual(res.others.map((e) => e.scanId), ["a"]);
+  assert.deepEqual(res.entries.map((e) => e.scanId), ["a"]);
   const next = applySync(log, roster, { deviceId: "gate-1", cursor: res.cursor, scans: [] });
-  assert.deepEqual(next.others, []);
+  assert.deepEqual(next.entries, []);
 });
 
-test("an empty batch still returns others and the current cursor", () => {
+test("a device starting from cursor 0 gets its own earlier entries back", () => {
+  const log = fakeLog();
+  const roster = fakeRoster();
+  applySync(log, roster, { deviceId: "gate-1", cursor: 0, scans: [scan("mine", "B001")] });
+  const reloaded = applySync(log, roster, { deviceId: "gate-1", cursor: 0, scans: [] });
+  assert.deepEqual(reloaded.entries.map((e) => e.scanId), ["mine"]);
+});
+
+test("an empty batch still returns entries and the current cursor", () => {
   const log = fakeLog();
   const roster = fakeRoster();
   applySync(log, roster, { deviceId: "gate-2", cursor: 0, scans: [scan("a", "B010")] });
   const res = applySync(log, roster, { deviceId: "gate-1", cursor: 0, scans: [] });
   assert.equal(res.cursor, 1);
-  assert.deepEqual(res.others.map((e) => e.scanId), ["a"]);
+  assert.deepEqual(res.entries.map((e) => e.scanId), ["a"]);
 });
 
 test("marks the roster once per attendee and session with the latest time in the batch", () => {

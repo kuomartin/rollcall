@@ -41,9 +41,9 @@
 | # | 項目 | 設計 | 理由 |
 |---|---|---|---|
 | 3.1 | 上傳 | 每 3 秒或佇列滿 N 筆：`POST {deviceId, cursor, scans[]}` | 5–10 台 ≈ 每秒 3 次呼叫，同時執行數約 3–4，遠低於上限 30 |
-| 3.2 | 寫入 | 取 lock → 依 `scanId` 去重 → 一次 `setValues` 寫 log → 更新學員名單的「{場次} 報到時間」欄 → 放 lock | 一批一次寫入，取代逐筆 `appendRow` |
-| 3.3 | 去重 | 每次同步讀所有報到分頁的 `seq`～`deviceId` 欄一次，同時用於去重與回傳 `others` | 一場活動幾千列以內，一次 `getValues` 比逐筆 `TextFinder` 快 |
-| 3.4 | 回傳 | `{cursor', scans since cursor（其他裝置）, rosterVersion}` | 一次呼叫同時滿足「寫入」與「看見別人」 |
+| 3.2 | 寫入 | lock 內：依 `scanId` 去重、分配 `seq`、預留各報到分頁的列範圍、更新近期紀錄快取。放開 lock 後：一次 `setValues` 寫入預留的列、更新學員名單的「{場次} 報到時間」欄 | 實測 lock 內讀寫 Sheet 要持有約 1.3 秒，8 台併發會逾時；只在 lock 內記帳後，持有時間 p50 約 0.3 秒 |
+| 3.3 | 去重 | 已見過的 `scanId` 與最近 300 筆紀錄存在 `CacheService`；快取被清掉時從報到分頁最後幾列重建 | lock 內不讀 Sheet。快取被清掉後重送可能多一列，報到本來允許重複，所以接受 |
+| 3.4 | 回傳 | `{cursor', acked, entries（cursor 之後、不含本次送來的掃描）, rosterVersion}` | 一次呼叫同時滿足「寫入」與「看見別人」；含同一裝置先前的紀錄，重新整理頁面後仍看得到自己稍早的報到 |
 | 3.5 | cursor | `seq` 為整個部署共用的計數器，存在 Script Properties，在 lock 內遞增；`others` 含所有場次，前端依目前場次過濾 | 每個場次一個分頁，各自遞增的話 cursor 要變成每場次一個；不用列號是因為工作人員刪列時會錯位 |
 | 3.6 | 閒置 | 佇列空時改每 10 秒同步一次 | 只為拉別人的紀錄 |
 | 3.7 | 傳輸 port | `SyncTransport.sync(request) → response` | P2P 日後換 adapter，不動 core |

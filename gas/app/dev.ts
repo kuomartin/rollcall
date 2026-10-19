@@ -3,11 +3,13 @@
 
 import { saveSettings } from "./settings.ts";
 import { ensureLogSheet, LOG_HEADERS, ROSTER_SHEET } from "./sheets.ts";
+import { ensureMarkColumns } from "./store.ts";
 
 const DEV_HEADERS = ["學員代號", "姓名", "手機", "班級"];
 
 function seed(count: number, sessions: string[]): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.setSpreadsheetTimeZone("Asia/Taipei");
   const roster = ss.getSheetByName(ROSTER_SHEET) ?? ss.insertSheet(ROSTER_SHEET, 0);
   roster.clear();
   const rows = Array.from({ length: count }, (_, i) => [
@@ -25,13 +27,21 @@ function seed(count: number, sessions: string[]): unknown {
     ensureLogSheet(session).getRange(1, LOG_HEADERS.length + 1, 1, 2).setValues([["姓名", "班級"]]);
   }
   saveSettings({ template: "報到成功；姓名：{{姓名}}，班級：{{班級}}", sessions });
-  PropertiesService.getScriptProperties().deleteProperty("seq");
+  ensureMarkColumns(sessions);
+  const props = PropertiesService.getScriptProperties();
+  for (const key of props.getKeys()) if (key === "seq" || key.startsWith("row:")) props.deleteProperty(key);
+  CacheService.getScriptCache().remove("recent");
   return { roster: count, sessions };
 }
 
 function dump(): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  return Object.fromEntries(ss.getSheets().map((s) => [s.getName(), s.getDataRange().getDisplayValues().slice(0, 30)]));
+  return Object.fromEntries(
+    ss.getSheets().map((s) => {
+      const values = s.getDataRange().getDisplayValues();
+      return [s.getName(), { rows: values.length - 1, head: values.slice(0, 3), all: values.map((r) => r.slice(0, 5)) }];
+    }),
+  );
 }
 
 export function devHandle(body: unknown): unknown {

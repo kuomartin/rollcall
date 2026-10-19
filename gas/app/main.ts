@@ -7,6 +7,7 @@ import { handle } from "./api.ts";
 import { devHandle } from "./dev.ts";
 import { bumpRosterVersion, deploymentId, getSettings, parseSessions, saveSettings, storeDeploymentId } from "./settings.ts";
 import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
+import { ensureMarkColumns } from "./store.ts";
 import { NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
 
 function json(body: ApiResponse<unknown>): GoogleAppsScript.Content.TextOutput {
@@ -87,6 +88,7 @@ export function storeSettings(template: string, sessionsText: string): { ok: tru
 
   saveSettings({ template, sessions });
   sessions.forEach(ensureLogSheet);
+  ensureMarkColumns(sessions);
   return { ok: true };
 }
 

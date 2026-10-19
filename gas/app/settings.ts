@@ -4,7 +4,6 @@ const KEY = {
   template: "template",
   sessions: "sessions",
   rosterVersion: "rosterVersion",
-  seq: "seq",
   deploymentId: "deploymentId",
 } as const;
 
@@ -48,14 +47,6 @@ export function rosterVersion(): string {
 /** 名單或模板變了：各裝置下次同步時重抓名單快取（PLAN 4.2）。 */
 export function bumpRosterVersion(): void {
   props().setProperty(KEY.rosterVersion, String(Date.now()));
-}
-
-export function storedSeq(): number {
-  return Number(props().getProperty(KEY.seq) ?? 0);
-}
-
-export function storeSeq(seq: number): void {
-  props().setProperty(KEY.seq, String(seq));
 }
 
 export function deploymentId(): string | null {

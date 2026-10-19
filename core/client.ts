@@ -1,4 +1,4 @@
-// 掃描端的同步狀態（PLAN 4.5、4.6）：待送佇列、cursor、其他裝置的紀錄、連線判定。
+// 掃描端的同步狀態（PLAN 4.5、4.6）：待送佇列、cursor、伺服器回傳的紀錄、連線判定。
 // 不碰網路與計時器；由 web 層決定何時 request()、把回應交給 receive()。
 
 import type { LogEntry, Scan, SyncRequest, SyncResponse } from "./sync.ts";
@@ -7,7 +7,7 @@ export class SyncClient {
   readonly deviceId: string;
   #queue: Scan[] = [];
   #cursor = 0;
-  #others = new Map<string, LogEntry>();
+  #entries = new Map<string, LogEntry>();
 
   constructor(deviceId: string) {
     this.deviceId = deviceId;
@@ -21,8 +21,9 @@ export class SyncClient {
     return this.#queue;
   }
 
-  others(): LogEntry[] {
-    return [...this.#others.values()].sort((a, b) => a.seq - b.seq);
+  /** 伺服器回傳的紀錄，依 seq 排序。 */
+  entries(): LogEntry[] {
+    return [...this.#entries.values()].sort((a, b) => a.seq - b.seq);
   }
 
   /** 送出整個佇列；回應前新進的掃描留到下一次。 */
@@ -33,7 +34,7 @@ export class SyncClient {
   receive(res: SyncResponse): void {
     const acked = new Set(res.acked);
     this.#queue = this.#queue.filter((s) => !acked.has(s.scanId));
-    for (const entry of res.others) this.#others.set(entry.scanId, entry);
+    for (const entry of res.entries) this.#entries.set(entry.scanId, entry);
     this.#cursor = Math.max(this.#cursor, res.cursor);
   }
 }

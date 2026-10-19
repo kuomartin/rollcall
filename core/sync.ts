@@ -1,4 +1,4 @@
-// 同步的伺服器端邏輯（PLAN 3）：去重、寫入、回傳其他裝置的紀錄。
+// 同步的伺服器端邏輯（PLAN 3）：去重、寫入、回傳 cursor 之後的紀錄。
 // 儲存透過 LogStore／RosterStore 兩個 port，Apps Script 端以 Sheet 實作，測試以記憶體實作。
 
 /** 一次掃描。scanId 由前端產生，重送時不變，讓寫入冪等（PLAN 2.3）。 */
@@ -27,8 +27,8 @@ export interface SyncResponse {
   cursor: number;
   /** 本次請求中已確定落地的 scanId，含先前已寫入的重送。前端據此移出佇列。 */
   acked: string[];
-  /** cursor 之後、其他裝置寫入的紀錄。 */
-  others: LogEntry[];
+  /** cursor 之後的紀錄，不含本次請求送來的掃描（呼叫端已知）。含同一裝置先前送出的紀錄，重新整理頁面後才看得到自己稍早的報到。 */
+  entries: LogEntry[];
 }
 
 export interface LogStore {
@@ -63,9 +63,10 @@ export function applySync(log: LogStore, roster: RosterStore, req: SyncRequest):
   }
   for (const entry of latest.values()) roster.markCheckedIn(entry.session, entry.code, entry.at);
 
+  const sent = new Set(req.scans.map((s) => s.scanId));
   return {
     cursor: seq,
-    acked: [...new Set(req.scans.map((s) => s.scanId))],
-    others: log.since(req.cursor).filter((e) => e.deviceId !== req.deviceId),
+    acked: [...sent],
+    entries: log.since(req.cursor).filter((e) => !sent.has(e.scanId)),
   };
 }
