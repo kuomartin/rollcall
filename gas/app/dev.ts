@@ -26,7 +26,7 @@ function seed(count: number, sessions: string[]): unknown {
     if (existing) ss.deleteSheet(existing);
     ensureLogSheet(session).getRange(1, LOG_HEADERS.length + 1, 1, 2).setValues([["姓名", "班級"]]);
   }
-  saveSettings({ template: "報到成功；姓名：{{姓名}}，班級：{{班級}}", sessions });
+  saveSettings({ template: "報到成功；姓名：{{姓名}}，班級：{{班級}}", sessions, mode: "code" });
   ensureMarkColumns(sessions);
   const props = PropertiesService.getScriptProperties();
   for (const key of props.getKeys()) if (key === "seq" || key.startsWith("row:")) props.deleteProperty(key);

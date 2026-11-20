@@ -5,9 +5,11 @@ import { CODE_FIELD, missingRequired } from "../../core/roster.ts";
 import { unknownFields } from "../../core/template.ts";
 import { handle } from "./api.ts";
 import { devHandle } from "./dev.ts";
+import type { Mode } from "../../core/api.ts";
 import { bumpRosterVersion, deploymentId, getSettings, parseSessions, saveSettings, storeDeploymentId } from "./settings.ts";
 import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
+import { ensureTicketSheets, RULES_SHEET } from "./tickets.ts";
 import { ensureWorkbook } from "./workbook.ts";
 import { CLEAR_DIALOG, NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
 
@@ -38,21 +40,43 @@ export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
   }
 }
 
-export function onOpen(): void {
-  ensureWorkbook();
-  SpreadsheetApp.getUi()
-    .createMenu("報到")
+export {
+  fillSerials,
+  generateKeyPair,
+  generatePhysicalTickets,
+  signSelectedRows,
+  testRule,
+} from "./tickets.ts";
+
+function addMenus(): void {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu("報到")
     .addItem("顯示報到側邊欄", "showSidebar")
     .addItem("工作人員連結", "showStaffLink")
     .addItem("設定", "showSettings")
     .addSeparator()
     .addItem("清除報到紀錄", "showClearDialog")
     .addToUi();
+  if (getSettings().mode !== "ticket") return;
+  ui.createMenu("票券")
+    .addItem("填入流水號", "fillSerials")
+    .addItem("簽發選取的列", "signSelectedRows")
+    .addItem("產生實體票", "generatePhysicalTickets")
+    .addItem("測試規則", "testRule")
+    .addSeparator()
+    .addItem("產生金鑰對", "generateKeyPair")
+    .addToUi();
 }
 
-/** simple trigger：學員名單被手動編輯時，讓各裝置重抓名單快取。script 自己的寫入不會觸發。 */
+export function onOpen(): void {
+  ensureWorkbook();
+  addMenus();
+}
+
+/** simple trigger：學員名單或票種規則被手動編輯時，讓各裝置重抓。script 自己的寫入不會觸發。 */
 export function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
-  if (e.range.getSheet().getName() === ROSTER_SHEET) bumpRosterVersion();
+  const name = e.range.getSheet().getName();
+  if (name === ROSTER_SHEET || name === RULES_SHEET) bumpRosterVersion();
 }
 
 function withDeployment(render: (id: string) => GoogleAppsScript.HTML.HtmlOutput): GoogleAppsScript.HTML.HtmlOutput {
@@ -75,12 +99,13 @@ export function showSettings(): void {
   SpreadsheetApp.getUi().showModalDialog(html, "設定");
 }
 
-export function loadSettings(): { template: string; sessions: string[]; headers: string[] } {
+export function loadSettings(): { template: string; sessions: string[]; mode: Mode; headers: string[] } {
   return { ...getSettings(), headers: readRoster().headers.filter(Boolean) };
 }
 
 /** 模板引用了學員名單沒有的欄位就不儲存。 */
-export function storeSettings(template: string, sessionsText: string): { ok: true } | { ok: false; error: string } {
+export function storeSettings(template: string, sessionsText: string, mode: string): { ok: true } | { ok: false; error: string } {
+  if (mode !== "code" && mode !== "ticket") return { ok: false, error: "未知的模式" };
   const headers = readRoster().headers;
   const missing = missingRequired(headers);
   if (missing.length) return { ok: false, error: `學員名單缺少欄位：${missing.join("、")}` };
@@ -88,11 +113,15 @@ export function storeSettings(template: string, sessionsText: string): { ok: tru
   if (unknown.length) return { ok: false, error: `學員名單沒有這些欄位：${unknown.join("、")}` };
   const sessions = parseSessions(sessionsText);
   if (!sessions.length) return { ok: false, error: "至少要有一個場次" };
-  if (sessions.includes(ROSTER_SHEET)) return { ok: false, error: `場次不能叫「${ROSTER_SHEET}」` };
+  if (sessions.includes(ROSTER_SHEET) || sessions.includes(RULES_SHEET)) {
+    return { ok: false, error: `場次不能叫「${ROSTER_SHEET}」或「${RULES_SHEET}」` };
+  }
 
-  saveSettings({ template, sessions });
+  saveSettings({ template, sessions, mode });
   sessions.forEach(ensureLogSheet);
   ensureMarkColumns(sessions);
+  if (mode === "ticket") ensureTicketSheets();
+  addMenus();
   return { ok: true };
 }
 

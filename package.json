@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "barcode-detector": "^3.2.2",
+    "qrcode-generator": "^2.0.4",
     "tweetnacl": "^1.0.3"
   }
 }

@@ -45,7 +45,7 @@ test("no matching rule returns null", () => {
 test("blank rows are skipped and values are trimmed", () => {
   const { rules: parsed, errors } = parseRules([["", "", ""], [" P ", " 放行 ", " 歡迎 "]]);
   assert.deepEqual(errors, []);
-  assert.deepEqual(parsed, [{ pattern: "P", action: "放行", message: "歡迎" }]);
+  assert.deepEqual(parsed, [{ pattern: "P", action: "放行", message: "歡迎", row: 3 }]);
 });
 
 test("invalid rows are reported with their sheet row number", () => {

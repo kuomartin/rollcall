@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRosterCache, cacheRow, checkInTimes, findRow, markColumnHeader, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
+import { buildRosterCache, buildTicketCache, cacheRow, checkInTimes, findRow, markColumnHeader, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
 
 const table: RosterTable = {
   headers: ["學員代號", "姓名", "手機", "班級", "備註"],
@@ -88,4 +88,22 @@ test("checkInTimes reads each session's check-in time column", () => {
 
 test("markColumnHeader names the roster column for a session", () => {
   assert.equal(markColumnHeader("5/22報到"), "5/22報到 報到時間");
+});
+
+test("buildTicketCache keeps rows with a serial and adds the serial to each row", () => {
+  const ticketTable: RosterTable = {
+    headers: ["學員代號", "姓名", "手機", "序號"],
+    rows: [
+      ["S1", "甲", "0912345678", "E00001"],
+      ["S2", "乙", "0922345678", ""],
+      ["", "丙", "", "E00003"],
+    ],
+  };
+  const cache = buildTicketCache(ticketTable, ["姓名", "手機", "不存在"], "v1");
+  assert.deepEqual(cache.fields, ["姓名", "手機", "序號"]);
+  assert.deepEqual(cache.rows, [{ 學員代號: "S1", 姓名: "甲", 手機: "*******678", 序號: "E00001" }]);
+});
+
+test("buildTicketCache is empty without a serial column", () => {
+  assert.deepEqual(buildTicketCache(table, ["姓名"], "v1").rows, []);
 });

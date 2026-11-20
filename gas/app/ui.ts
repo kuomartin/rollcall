@@ -63,7 +63,12 @@ export function sidebar(deploymentId: string): string {
 }
 
 export const SETTINGS_DIALOG = `${STYLE}
-<label>報到成功訊息（用 {{欄位名稱}} 代入學員名單的欄位）</label>
+<label>模式</label>
+<select id="mode">
+  <option value="code">代號模式：掃學員代號或條碼、可輸入代號或手機</option>
+  <option value="ticket">票券模式：只掃簽章的票券 QR，訊息由「票種規則」決定</option>
+</select>
+<label>報到成功訊息（代號模式用；用 {{欄位名稱}} 代入學員名單的欄位）</label>
 <textarea id="template" rows="4"></textarea>
 <label>場次（每個場次一個報到分頁，用逗號分隔）</label>
 <input type="text" id="sessions">
@@ -75,6 +80,7 @@ export const SETTINGS_DIALOG = `${STYLE}
   google.script.run.withSuccessHandler((s) => {
     $("template").value = s.template;
     $("sessions").value = s.sessions.join(", ");
+    $("mode").value = s.mode;
     $("headers").textContent = "學員名單欄位：" + s.headers.join("、");
   }).loadSettings();
   $("save").addEventListener("click", () => {
@@ -86,7 +92,7 @@ export const SETTINGS_DIALOG = `${STYLE}
         $("msg").className = r.ok ? "ok" : "error";
       })
       .withFailureHandler((e) => { $("msg").textContent = e.message; $("msg").className = "error"; })
-      .storeSettings($("template").value, $("sessions").value);
+      .storeSettings($("template").value, $("sessions").value, $("mode").value);
   });
 </script>`;
 

@@ -43,3 +43,21 @@ export function ensureLogSheet(session: string): Sheet {
   sheet.setFrozenRows(1);
   return sheet;
 }
+
+/** 各場次每個代號最近的報到時間，讀自報到分頁。票券模式用：放行的票不在學員名單上，名單的報到時間欄記不到。 */
+export function logCheckInTimes(sessions: readonly string[]): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const session of sessions) {
+    const times: Record<string, number> = {};
+    const sheet = spreadsheet().getSheetByName(session);
+    if (sheet && sheet.getLastRow() >= 2) {
+      for (const [at, code] of sheet.getRange(2, 3, sheet.getLastRow() - 1, 2).getValues()) {
+        const t = at instanceof Date ? at.getTime() : NaN;
+        const c = String(code ?? "").trim();
+        if (c && Number.isFinite(t) && !(times[c] >= t)) times[c] = t;
+      }
+    }
+    out[session] = times;
+  }
+  return out;
+}

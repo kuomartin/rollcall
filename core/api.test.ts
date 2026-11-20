@@ -42,3 +42,10 @@ test("rejects oversized batches", () => {
   const scans = Array.from({ length: 501 }, (_, i) => ({ scanId: `s${i}`, code: "A", session: "報到", at: 1 }));
   assert.throws(() => parseRequest({ action: "sync", deviceId: "g", cursor: 0, scans }));
 });
+
+test("parses an optional gate name on sync", () => {
+  const req = parseRequest({ action: "sync", deviceId: "d", cursor: 0, scans: [], gate: "東門" });
+  assert.deepEqual(req, { action: "sync", deviceId: "d", cursor: 0, scans: [], gate: "東門" });
+  assert.throws(() => parseRequest({ action: "sync", deviceId: "d", cursor: 0, scans: [], gate: "" }));
+  assert.throws(() => parseRequest({ action: "sync", deviceId: "d", cursor: 0, scans: [], gate: 1 }));
+});
