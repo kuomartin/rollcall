@@ -4,6 +4,8 @@ import { referencedFields } from "./template.ts";
 
 export const CODE_FIELD = "學員代號";
 export const PHONE_FIELD = "手機";
+/** 票券模式：簽章涵蓋的序號。規則訊息也用 {{序號}} 代入。 */
+export const SERIAL_FIELD = "序號";
 
 /** 學員名單分頁的原始內容：第 1 列標題，其後每列一位學員。 */
 export interface RosterTable {
@@ -61,6 +63,23 @@ export function buildRosterCache(table: RosterTable, template: string, version: 
     if (text(row[codeIndex])) rows.push(cacheRow(table, i, fields));
   });
   return { version, fields, rows };
+}
+
+/**
+ * 票券模式的名單快取：只帶有序號的列，每列多帶序號，掃描頁用它對回學員。
+ * fields 是「需在名單」規則訊息引用到的欄位（core/rules.ts 的 rosterFields）。
+ */
+export function buildTicketCache(table: RosterTable, fields: readonly string[], version: string): RosterCache {
+  const kept = [...fields.filter((f) => f !== CODE_FIELD && f !== SERIAL_FIELD && table.headers.includes(f)), SERIAL_FIELD];
+  const codeIndex = table.headers.indexOf(CODE_FIELD);
+  const serialIndex = table.headers.indexOf(SERIAL_FIELD);
+  const rows: CacheRow[] = [];
+  if (serialIndex !== -1) {
+    table.rows.forEach((row, i) => {
+      if (text(row[codeIndex]) && text(row[serialIndex])) rows.push(cacheRow(table, i, kept));
+    });
+  }
+  return { version, fields: kept, rows };
 }
 
 /** 先比對學員代號，找不到再比對手機。回傳列索引，找不到為 -1。 */

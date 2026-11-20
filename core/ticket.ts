@@ -1,8 +1,8 @@
 // 票券模式的掃描判定：驗章 → 比對票種規則 → 依動作查名單（docs/adr/0008-ticket-mode.md）。
 // 重複報到的提醒由呼叫端依回傳的 code 判斷，與代號模式共用。
 
-import { CODE_FIELD, type CacheRow } from "./roster.ts";
-import { matchRule, SERIAL_FIELD, type CompiledRule } from "./rules.ts";
+import { CODE_FIELD, SERIAL_FIELD, type CacheRow } from "./roster.ts";
+import { matchRule, type CompiledRule } from "./rules.ts";
 import { verifyToken } from "./serial.ts";
 import { renderTemplate } from "./template.ts";
 

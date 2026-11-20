@@ -8,6 +8,16 @@ import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const GLOBAL = "__rollcall";
+
+// tweetnacl 在沒有 self.crypto 時會 require("crypto") 找亂數來源。兩邊都不需要它的亂數：
+// 瀏覽器有 self.crypto；Apps Script 端的種子由 Utilities.getUuid() 產生（gas/app/tickets.ts）。
+const noNodeCrypto: esbuild.Plugin = {
+  name: "no-node-crypto",
+  setup(build) {
+    build.onResolve({ filter: /^crypto$/ }, () => ({ path: "crypto", namespace: "empty" }));
+    build.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "module.exports = {};" }));
+  },
+};
 const dev = process.argv.includes("--dev");
 
 async function buildGas(): Promise<void> {
@@ -21,6 +31,7 @@ async function buildGas(): Promise<void> {
     define: { __DEV__: String(dev) },
     minifySyntax: true,
     write: false,
+    plugins: [noNodeCrypto],
   } satisfies esbuild.BuildOptions;
   // metafile 只在 ESM 輸出時列出 exports，所以先用 ESM 取得名單，再輸出 IIFE。
   const esm = await esbuild.build({ ...common, format: "esm", metafile: true });
@@ -45,6 +56,7 @@ async function buildWeb(): Promise<void> {
     outdir: "dist/web",
     chunkNames: "chunks/[name]-[hash]",
     minify: true,
+    plugins: [noNodeCrypto],
   });
   copyFileSync("web/index.html", "dist/web/index.html");
   // web/barcode.ts 的 ponyfill 從頁面同一個位置載入 wasm。

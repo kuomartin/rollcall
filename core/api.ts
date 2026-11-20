@@ -1,12 +1,15 @@
 // 掃描頁與 Apps Script 之間的請求／回應格式。請求來自匿名呼叫者，進 handler 前一律經過 parseRequest。
 
 import type { CacheRow, RosterCache } from "./roster.ts";
+import type { Rule } from "./rules.ts";
 import type { Scan, SyncRequest, SyncResponse } from "./sync.ts";
 
 export type ApiRequest =
   | { action: "bootstrap" }
   | { action: "lookup"; query: string }
-  | ({ action: "sync" } & SyncRequest);
+  | ({ action: "sync"; gate?: string } & SyncRequest);
+
+export type Mode = "code" | "ticket";
 
 export interface BootstrapResult {
   sessions: string[];
@@ -14,6 +17,15 @@ export interface BootstrapResult {
   roster: RosterCache;
   /** 場次 → 學員代號 → 最近報到時間，用來提醒重複報到。 */
   checkedIn: Record<string, Record<string, number>>;
+  /** 舊版 Apps Script 沒有這些欄位：沒有 mode 就是代號模式。 */
+  mode?: Mode;
+  /** 票券模式：Ed25519 公鑰（base64url）；尚未產生金鑰對時為 null。 */
+  publicKey?: string | null;
+  /** 票券模式：票種規則。ruleErrors 非空時 rules 為空陣列，掃描頁沿用先前的規則。 */
+  rules?: Rule[];
+  ruleErrors?: string[];
+  /** deviceId → 入口名稱。 */
+  gates?: Record<string, string>;
 }
 
 export interface LookupResult {
@@ -24,6 +36,7 @@ export interface LookupResult {
 
 export interface SyncResult extends SyncResponse {
   rosterVersion: string;
+  gates?: Record<string, string>;
 }
 
 export type ApiResponse<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -72,6 +85,7 @@ export function parseRequest(body: unknown): ApiRequest {
         deviceId: str(b.deviceId, "deviceId"),
         cursor: nonNegative(b.cursor, "cursor"),
         scans: b.scans.map(scan),
+        ...(b.gate === undefined ? {} : { gate: str(b.gate, "gate") }),
       };
     }
     default:

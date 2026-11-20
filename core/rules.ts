@@ -1,19 +1,19 @@
 // 票種規則：依序號決定放行、需在名單或拒絕（docs/adr/0008-ticket-mode.md）。
 // 由上往下比對，第一條符合的生效；比對是從序號開頭起算的 regex，區分大小寫。
 
+import { SERIAL_FIELD } from "./roster.ts";
 import { referencedFields } from "./template.ts";
 
 export const RULE_HEADERS = ["比對", "動作", "訊息"] as const;
 export const RULE_ACTIONS = ["放行", "需在名單", "拒絕"] as const;
 export type RuleAction = (typeof RULE_ACTIONS)[number];
 
-/** 訊息裡代入序號的欄位名稱。 */
-export const SERIAL_FIELD = "序號";
-
 export interface Rule {
   pattern: string;
   action: RuleAction;
   message: string;
+  /** 在「票種規則」分頁的列號，用於錯誤與測試訊息。 */
+  row: number;
 }
 
 export interface CompiledRule extends Rule {
@@ -36,10 +36,11 @@ function compile(pattern: string): RegExp {
 export function parseRules(rows: readonly (readonly unknown[])[]): { rules: Rule[]; errors: string[] } {
   const rules: Rule[] = [];
   const errors: string[] = [];
-  rows.forEach((row, i) => {
-    const [pattern, action, message] = [0, 1, 2].map((c) => text(row[c]));
+  rows.forEach((cells, i) => {
+    const [pattern, action, message] = [0, 1, 2].map((c) => text(cells[c]));
     if (!pattern && !action && !message) return;
-    const where = `第 ${i + 2} 列`;
+    const row = i + 2;
+    const where = `第 ${row} 列`;
     if (!pattern) {
       errors.push(`${where}：比對不可空白`);
       return;
@@ -54,7 +55,7 @@ export function parseRules(rows: readonly (readonly unknown[])[]): { rules: Rule
       errors.push(`${where}：動作必須是 ${RULE_ACTIONS.join("、")}`);
       return;
     }
-    rules.push({ pattern, action: action as RuleAction, message });
+    rules.push({ pattern, action: action as RuleAction, message, row });
   });
   return { rules, errors };
 }

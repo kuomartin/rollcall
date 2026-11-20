@@ -1,26 +1,47 @@
 // doPost 的動作：bootstrap、lookup、sync。
 
 import type { ApiRequest, BootstrapResult, LookupResult, SyncResult } from "../../core/api.ts";
-import { buildRosterCache, cacheFields, cacheRow, checkInTimes, CODE_FIELD, findRow } from "../../core/roster.ts";
+import { buildRosterCache, buildTicketCache, cacheFields, cacheRow, checkInTimes, CODE_FIELD, findRow } from "../../core/roster.ts";
+import { rosterFields } from "../../core/rules.ts";
 import { applySync, type SyncRequest, type SyncResponse } from "../../core/sync.ts";
-import { getSettings, rosterVersion } from "./settings.ts";
-import { readRoster } from "./sheets.ts";
+import { gates, getSettings, rosterVersion, signingKeys, syncGate } from "./settings.ts";
+import { logCheckInTimes, readRoster } from "./sheets.ts";
 import { DeferredRosterStore, LockedLogStore, writeMarks, writeReservations } from "./store.ts";
+import { readRules } from "./tickets.ts";
 
 const LOCK_WAIT_MS = 20_000;
 
 function bootstrap(): BootstrapResult {
-  const { sessions, template } = getSettings();
+  const { sessions, template, mode } = getSettings();
   const roster = readRoster();
+  if (mode === "ticket") {
+    // 規則有錯時不送出任何規則：少了一條「拒絕」就可能錯放，掃描頁改為沿用先前的規則。
+    const { rules, errors } = readRules();
+    return {
+      sessions,
+      template,
+      mode,
+      roster: buildTicketCache(roster, rosterFields(rules), rosterVersion()),
+      checkedIn: logCheckInTimes(sessions),
+      publicKey: signingKeys()?.publicKey ?? null,
+      rules: errors.length ? [] : rules,
+      ruleErrors: errors,
+      gates: gates(),
+    };
+  }
   return {
     sessions,
     template,
+    mode,
     roster: buildRosterCache(roster, template, rosterVersion()),
     checkedIn: checkInTimes(roster, sessions),
+    gates: gates(),
   };
 }
 
 function lookup(query: string): LookupResult {
+  // 票券模式只認簽章：用代號或手機查詢等於繞過簽章。
+  if (getSettings().mode === "ticket") throw new Error("票券模式不支援查詢");
   const roster = readRoster();
   const index = findRow(roster, query);
   if (index === -1) return { row: null, checkedIn: {} };
@@ -48,7 +69,7 @@ function timer(): { mark(label: string): void; result(): Record<string, number> 
   };
 }
 
-function sync(req: SyncRequest): SyncResult {
+function sync(req: SyncRequest & { gate?: string }): SyncResult {
   const t = timer();
   const { sessions } = getSettings();
   t.mark("settings");
@@ -73,7 +94,9 @@ function sync(req: SyncRequest): SyncResult {
   writeReservations(store.reservations, roster);
   writeMarks(marks.marks, roster);
   t.mark("write");
-  return { ...res, rosterVersion: rosterVersion(), ...(__DEV__ ? { timings: t.result() } : {}) };
+  const gateNames = syncGate(req.deviceId, req.gate);
+  t.mark("gates");
+  return { ...res, rosterVersion: rosterVersion(), gates: gateNames, ...(__DEV__ ? { timings: t.result() } : {}) };
 }
 
 export function handle(req: ApiRequest): unknown {
