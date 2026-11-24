@@ -34,6 +34,7 @@ const ui = {
   input: $<HTMLInputElement>("input"),
   camera: $<HTMLButtonElement>("camera"),
   video: $<HTMLVideoElement>("video"),
+  scan: $("scan"),
   result: $("result"),
   recent: $<HTMLOListElement>("recent"),
   theme: $<HTMLButtonElement>("theme"),
@@ -449,6 +450,7 @@ async function createDetector(): Promise<Detect> {
 let cameraStarting = false;
 
 function renderCamera(): void {
+  ui.scan.classList.toggle("live", !ui.video.hidden);
   ui.camera.disabled = cameraStarting;
   ui.camera.textContent = cameraStarting ? "相機啟動中…" : ui.video.srcObject ? "關閉相機" : "相機";
 }
@@ -462,6 +464,7 @@ async function startCamera(): Promise<void> {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     ui.video.srcObject = stream;
     ui.video.hidden = false;
+    renderCamera();
     await ui.video.play();
     let last = { value: "", at: 0 };
     const loop = async () => {

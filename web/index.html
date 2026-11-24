@@ -55,6 +55,10 @@
       .result.warn { background: var(--warn-bg); color: var(--warn-fg); }
       .result button { margin-top: 10px; font-size: 0.8em; font-weight: 600; border-color: currentColor; }
       .result.info { color: var(--muted); font-weight: 400; font-size: 1em; }
+      /* 相機開著時，訊息條疊在畫面上方：手機上不用捲動就看得到結果，掃描區也不會被推下去。 */
+      .scan { position: relative; }
+      .scan.live .result { position: absolute; top: 20px; left: 8px; right: 8px; margin: 0; z-index: 1; box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); }
+      .scan.live .result.info { background: var(--bg); }
       h2 { font-size: 0.95em; color: var(--muted); margin: 20px 0 4px; }
       ol { list-style: none; padding: 0; margin: 0; }
       li { border-bottom: 1px solid var(--line); }
@@ -77,8 +81,10 @@
       <button type="button" id="camera" hidden>相機</button>
       <button type="submit">報到</button>
     </form>
-    <div id="result" class="result info"></div>
-    <video id="video" playsinline muted hidden></video>
+    <div id="scan" class="scan">
+      <div id="result" class="result info"></div>
+      <video id="video" playsinline muted hidden></video>
+    </div>
     <h2>最近報到</h2>
     <ol id="recent"></ol>
     <script type="module" src="main.js"></script>
