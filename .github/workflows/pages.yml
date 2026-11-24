@@ -14,12 +14,10 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# build 與 deploy 分成兩個 job：同一個 job 裡上傳完馬上部署，deploy-pages 偶爾會讀不到剛上傳的 artifact。
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,5 +31,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
