@@ -45,6 +45,7 @@ export {
   generateKeyPair,
   physicalForm,
   showPhysicalSheet,
+  signPhysicalChunk,
   signSelectedRows,
   startPhysical,
   testRule,

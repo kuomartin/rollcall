@@ -115,7 +115,7 @@ function signAll(): unknown {
 }
 
 function physicalSummary(batch: PhysicalBatch): unknown {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet)!;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet!)!;
   const values = sheet.getRange(3, 1, batch.count, 3).getValues();
   return {
     rows: values.length,
@@ -154,7 +154,7 @@ export function devHandle(body: unknown): unknown {
   if (b.action === "devDump") return dump();
   if (b.action === "devRules" && b.rows) return setRules(b.rows);
   if (b.action === "devSignAll") return signAll();
-  if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""));
+  if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""), true);
   if (b.action === "devWriteChunk" && b.batch) return writePhysicalChunk(b.batch, b.offset ?? 0, b.n ?? 100);
   if (b.action === "devPhysicalSummary" && b.batch) return physicalSummary(b.batch);
   if (b.action === "devTicketSeed") return ticketSeed(b.signed ?? 5, b.sessions ?? ["報到"]);

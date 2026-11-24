@@ -130,33 +130,52 @@ export const CLEAR_DIALOG = `${STYLE}
 </script>`;
 
 /**
- * 產生實體票的側邊欄。號碼在「產生」時一次發出，之後分段簽章寫入並顯示進度；
- * 某一段失敗時可以從那一段繼續，同一段重寫結果相同。
+ * 產生實體票的側邊欄。號碼在「產生」時一次發出，之後分段簽章並顯示進度；
+ * 某一段失敗時可以從那一段繼續，同一段重簽結果相同。
+ * 輸出成列印頁與 CSV 時，QR 在瀏覽器裡畫，幾千張也只要幾秒，試算表不留任何單張紀錄；
+ * 輸出到分頁時每張 QR 儲存格圖片約 0.7 秒。
  */
 export const PHYSICAL_SIDEBAR = `${STYLE}
-<p>產生不記名的實體票，寫到新的分頁供列印；印完請刪除該分頁。試算表只記前綴與下一號。</p>
+<style>
+  .choice { display: block; margin: 4px 0; }
+  .note { color: #666; font-size: 0.9em; }
+</style>
+<p>產生不記名的實體票。試算表只記前綴與下一號。</p>
 <label>前綴（結尾不能是數字，例如 P03-）</label>
 <input type="text" id="prefix" list="known" autocomplete="off">
 <datalist id="known"></datalist>
-<p id="hint"></p>
+<p id="hint" class="note"></p>
 <div id="widthRow">
   <label>流水號位數</label>
   <input type="text" id="width" inputmode="numeric">
 </div>
 <label>張數</label>
 <input type="text" id="count" inputmode="numeric">
+<label>輸出</label>
+<label class="choice"><input type="radio" name="out" value="print" checked> 列印頁與 CSV（快，不留在試算表）</label>
+<label class="choice"><input type="radio" name="out" value="sheet"> 寫入新分頁（每張約 0.7 秒，印完請刪除分頁）</label>
 <button id="go">產生</button>
 <button id="resume" hidden>從中斷處繼續</button>
 <p id="msg"></p>
+<div id="done" hidden>
+  <button id="print">開啟列印頁</button>
+  <button id="csv">下載 CSV</button>
+  <p class="note">關掉側邊欄前請先列印或下載。關掉後要重新產生，會發新的號碼；這批號碼仍然有效，只是沒有印出。</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
-  const CHUNK = 100;
+  const SIGN_CHUNK = 500;
+  const SHEET_CHUNK = 100;
   const $ = (id) => document.getElementById(id);
   let form = { hasKeys: false, prefixes: [], defaultWidth: 5 };
   let batch = null;
   let offset = 0;
+  let tickets = [];
 
   const say = (text, kind) => { $("msg").textContent = text; $("msg").className = kind || ""; };
   const pad = (n, w) => String(n).padStart(w, "0");
+  const range = () => batch.prefix + pad(batch.first, batch.width) + "–" + batch.prefix + pad(batch.first + batch.count - 1, batch.width);
+  const toSheet = () => document.querySelector("input[name=out]:checked").value === "sheet";
 
   function update() {
     const known = form.prefixes.find((p) => p.prefix === $("prefix").value.trim());
@@ -175,34 +194,93 @@ export const PHYSICAL_SIDEBAR = `${STYLE}
     }).physicalForm();
   }
 
-  function next() {
-    if (offset >= batch.count) {
-      const last = batch.prefix + pad(batch.first + batch.count - 1, batch.width);
-      say("完成：" + batch.count + " 張（" + batch.prefix + pad(batch.first, batch.width) + "–" + last + "）。", "ok");
-      $("go").disabled = false;
-      google.script.run.showPhysicalSheet(batch.sheet);
-      load();
-      return;
-    }
-    say("寫入中… " + offset + " / " + batch.count);
-    google.script.run
-      .withSuccessHandler((done) => { offset = done; next(); })
-      .withFailureHandler((e) => {
-        say("在第 " + (offset + 1) + " 張中斷：" + e.message, "error");
-        $("resume").hidden = false;
-      })
-      .writePhysicalChunk(batch, offset, CHUNK);
+  function finish() {
+    say("完成：" + batch.count + " 張（" + range() + "）。", "ok");
+    $("go").disabled = false;
+    if (batch.sheet) google.script.run.showPhysicalSheet(batch.sheet);
+    else $("done").hidden = false;
+    load();
   }
+
+  function next() {
+    if (offset >= batch.count) return finish();
+    say((batch.sheet ? "寫入中… " : "簽章中… ") + offset + " / " + batch.count);
+    const failed = (e) => {
+      say("在第 " + (offset + 1) + " 張中斷：" + e.message, "error");
+      $("resume").hidden = false;
+    };
+    if (batch.sheet) {
+      google.script.run
+        .withSuccessHandler((done) => { offset = done; next(); })
+        .withFailureHandler(failed)
+        .writePhysicalChunk(batch, offset, SHEET_CHUNK);
+    } else {
+      google.script.run
+        .withSuccessHandler((rows) => { tickets.push(...rows); offset += rows.length; next(); })
+        .withFailureHandler(failed)
+        .signPhysicalChunk(batch, offset, SIGN_CHUNK);
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+  }
+
+  /** GIF data URL 每張約 2.7 KB；SVG 每張約 21 KB，幾千張的列印頁會大到瀏覽器吃不消。 */
+  function qrImg(token) {
+    const qr = qrcode(0, "M");
+    qr.addData(token);
+    qr.make();
+    return '<img alt="" src="' + qr.createDataURL(4, 0) + '">';
+  }
+
+  function printPage() {
+    const cards = tickets.map(([serial, token]) =>
+      '<div class="card">' + qrImg(token) + '<div class="serial">' + escapeHtml(serial) + "</div></div>").join("");
+    return '<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><title>實體票 ' + escapeHtml(range()) + "</title>" +
+      "<style>@page{size:A4;margin:10mm}body{margin:0;font-family:system-ui,sans-serif}" +
+      ".grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}" +
+      // QR 四周要留約 4 個模組的空白才好掃：36mm 的 QR 約 41 個模組，padding 4mm 剛好。
+      ".card{break-inside:avoid;border:1px dashed #999;padding:4mm;text-align:center}" +
+      ".card img{width:36mm;height:36mm;image-rendering:pixelated}.serial{font:12pt monospace;margin-top:2mm}" +
+      "@media screen{body{padding:10mm}}</style></head><body><div class=\\"grid\\">" + cards + "</div></body></html>";
+  }
+
+  $("print").addEventListener("click", () => {
+    // 新視窗要在點擊當下開，否則會被當成彈出式視窗擋下；列印頁幾千張要幾秒，開好視窗再填內容。
+    const w = window.open("", "_blank");
+    if (!w) return say("瀏覽器擋下了新視窗，請允許此試算表開啟彈出式視窗後再按一次。", "error");
+    w.document.write("<p>產生列印頁中…</p>");
+    setTimeout(() => {
+      w.document.open();
+      w.document.write(printPage());
+      w.document.close();
+    }, 0);
+  });
+
+  $("csv").addEventListener("click", () => {
+    const lines = ["序號,票券", ...tickets.map(([serial, token]) => serial + "," + token)];
+    // 開頭的 BOM 讓 Excel 以 UTF-8 開啟。
+    const blob = new Blob(["﻿" + lines.join("\\r\\n") + "\\r\\n"], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "實體票 " + range() + ".csv";
+    document.body.append(a);
+    a.click();
+    a.remove();
+  });
 
   $("prefix").addEventListener("input", update);
   $("go").addEventListener("click", () => {
     $("go").disabled = true;
     $("resume").hidden = true;
+    $("done").hidden = true;
+    tickets = [];
     say("發出號碼中…");
     google.script.run
       .withSuccessHandler((b) => { batch = b; offset = 0; next(); })
       .withFailureHandler((e) => { say(e.message, "error"); $("go").disabled = false; })
-      .startPhysical($("prefix").value, $("width").value, $("count").value);
+      .startPhysical($("prefix").value, $("width").value, $("count").value, toSheet());
   });
   $("resume").addEventListener("click", () => { $("resume").hidden = true; next(); });
   load();

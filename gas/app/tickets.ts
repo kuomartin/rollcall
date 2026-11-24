@@ -409,9 +409,12 @@ export function physicalForm(): PhysicalForm {
   };
 }
 
-/** 一批實體票：號碼已經發出，分頁已經建好，由側邊欄分段寫入。 */
+/**
+ * 一批實體票：號碼已經發出，由側邊欄分段簽章。
+ * 輸出到分頁時 sheet 是已建好的分頁名稱；輸出成列印頁與 CSV 時為 null，試算表不留任何單張紀錄。
+ */
 export interface PhysicalBatch {
-  sheet: string;
+  sheet: string | null;
   prefix: string;
   width: number;
   first: number;
@@ -419,10 +422,10 @@ export interface PhysicalBatch {
 }
 
 /**
- * 側邊欄按下「產生」：檢查參數、一次發出全部號碼、建立列印分頁。
- * 簽章與寫入交給 writePhysicalChunk 分段做，張數再多也不會超過 Apps Script 單次執行的時間上限。
+ * 側邊欄按下「產生」：檢查參數、一次發出全部號碼，輸出到分頁時建立分頁。
+ * 簽章交給 signPhysicalChunk／writePhysicalChunk 分段做，張數再多也不會超過 Apps Script 單次執行的時間上限。
  */
-export function startPhysical(prefixText: string, widthText: string, countText: string): PhysicalBatch {
+export function startPhysical(prefixText: string, widthText: string, countText: string, toSheet: boolean): PhysicalBatch {
   if (!currentKeys()) throw new Error("尚未產生金鑰對，請先執行「票券 → 產生金鑰對」。");
   const prefix = prefixText.trim();
   if (!isValidPrefix(prefix)) throw new Error("前綴只能用英數字、- 與 _，而且結尾不能是數字。");
@@ -443,6 +446,7 @@ export function startPhysical(prefixText: string, widthText: string, countText: 
 
   const serials = reserveRange(prefix, width, count);
   const first = Number(splitPrefix(serials.first).digits);
+  if (!toSheet) return { sheet: null, prefix, width, first, count };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.insertSheet(`實體票 ${serials.first}–${serials.last}`);
   if (sheet.getMaxRows() < count + 2) sheet.insertRowsAfter(sheet.getMaxRows(), count + 2 - sheet.getMaxRows());
@@ -460,18 +464,24 @@ function reserveRange(prefix: string, width: number, count: number): { first: st
   return { first: serials[0], last: serials[serials.length - 1] };
 }
 
-/** 寫入一批實體票的第 offset 張起 n 張；同一段重寫結果相同，失敗可以重試。 */
-export function writePhysicalChunk(batch: PhysicalBatch, offset: number, n: number): number {
+/** 簽出一批實體票的第 offset 張起 n 張，回傳 [序號, 票券]；同一段重簽結果相同，失敗可以重試。 */
+export function signPhysicalChunk(batch: PhysicalBatch, offset: number, n: number): [string, string][] {
   const keys = currentKeys();
   if (!keys) throw new Error("找不到金鑰對");
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet);
-  if (!sheet) throw new Error(`找不到「${batch.sheet}」分頁`);
   const size = Math.min(n, batch.count - offset);
-  const rows = Array.from({ length: size }, (_, k) => {
+  return Array.from({ length: size }, (_, k) => {
     const serial = formatSerial(batch.prefix, batch.first + offset + k, batch.width);
-    const token = sign(keys.secretKey, serial);
-    return [serial, token, qrCellImage(token)];
+    return [serial, sign(keys.secretKey, serial)];
   });
+}
+
+/** 簽出並寫入分頁；一張 QR 儲存格圖片約 0.7 秒，所以這條路比列印頁慢得多。 */
+export function writePhysicalChunk(batch: PhysicalBatch, offset: number, n: number): number {
+  const sheet = batch.sheet && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet);
+  if (!sheet) throw new Error(`找不到「${batch.sheet}」分頁`);
+  const signed = signPhysicalChunk(batch, offset, n);
+  const size = signed.length;
+  const rows = signed.map(([serial, token]) => [serial, token, qrCellImage(token)]);
   sheet.getRange(3 + offset, 1, size, 3).setValues(rows);
   sheet.setRowHeightsForced(3 + offset, size, QR_SIZE_PX);
   return offset + size;
