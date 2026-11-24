@@ -442,35 +442,60 @@ async function createDetector(): Promise<Detect> {
   return async (video) => (await detector.detect(video).catch(() => []))[0]?.rawValue ?? null;
 }
 
+/**
+ * 相機只會處在關閉、啟動中、開啟三者之一。啟動要等載入辨識器、使用者授權、影像開始播放，
+ * 這段時間按鈕停用：否則再按一次會開第二支串流，換掉 srcObject 而中斷前一次的 play()。
+ */
+let cameraStarting = false;
+
+function renderCamera(): void {
+  ui.camera.disabled = cameraStarting;
+  ui.camera.textContent = cameraStarting ? "相機啟動中…" : ui.video.srcObject ? "關閉相機" : "相機";
+}
+
 async function startCamera(): Promise<void> {
-  const detect = await createDetector();
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-  ui.video.srcObject = stream;
-  ui.video.hidden = false;
-  ui.camera.textContent = "關閉相機";
-  await ui.video.play();
-  let last = { value: "", at: 0 };
-  const loop = async () => {
-    if (!ui.video.srcObject) return;
-    const value = await detect(ui.video);
-    if (value && !(value === last.value && Date.now() - last.at < CAMERA_REPEAT_MS)) {
-      last = { value, at: Date.now() };
-      void checkIn(value);
-    }
-    setTimeout(loop, 250);
-  };
-  void loop();
+  cameraStarting = true;
+  renderCamera();
+  let stream: MediaStream | null = null;
+  try {
+    const detect = await createDetector();
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    ui.video.srcObject = stream;
+    ui.video.hidden = false;
+    await ui.video.play();
+    let last = { value: "", at: 0 };
+    const loop = async () => {
+      if (ui.video.srcObject !== stream) return;
+      const value = await detect(ui.video);
+      if (value && !(value === last.value && Date.now() - last.at < CAMERA_REPEAT_MS)) {
+        last = { value, at: Date.now() };
+        void checkIn(value);
+      }
+      setTimeout(loop, 250);
+    };
+    void loop();
+  } catch (err) {
+    // 啟動途中相機已被關掉（srcObject 換了），play() 的中斷不是錯誤。
+    if (stream && ui.video.srcObject !== stream) return;
+    stream?.getTracks().forEach((t) => t.stop());
+    if (ui.video.srcObject === stream) stopCamera();
+    throw err;
+  } finally {
+    cameraStarting = false;
+    renderCamera();
+  }
 }
 
 function stopCamera(): void {
   (ui.video.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
   ui.video.srcObject = null;
   ui.video.hidden = true;
-  ui.camera.textContent = "相機";
+  renderCamera();
 }
 
 ui.camera.hidden = !navigator.mediaDevices?.getUserMedia;
 ui.camera.addEventListener("click", () => {
+  if (cameraStarting) return;
   if (ui.video.srcObject) stopCamera();
   else startCamera().catch((err) => showResult("error", `無法開啟相機：${err instanceof Error ? err.message : err}`));
 });
