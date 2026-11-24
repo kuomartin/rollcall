@@ -11,7 +11,7 @@ import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.
 import { clearSession, ensureMarkColumns } from "./store.ts";
 import { ensureTicketSheets, RULES_SHEET } from "./tickets.ts";
 import { ensureWorkbook } from "./workbook.ts";
-import { CLEAR_DIALOG, NEED_SETUP, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
+import { CLEAR_DIALOG, NEED_SETUP, PHYSICAL_SIDEBAR, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
 
 function json(body: ApiResponse<unknown>): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
@@ -43,9 +43,13 @@ export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
 export {
   fillSerials,
   generateKeyPair,
-  generatePhysicalTickets,
+  physicalForm,
+  showPhysicalSheet,
+  signPhysicalChunk,
   signSelectedRows,
+  startPhysical,
   testRule,
+  writePhysicalChunk,
 } from "./tickets.ts";
 
 function addMenus(): void {
@@ -61,7 +65,7 @@ function addMenus(): void {
   ui.createMenu("票券")
     .addItem("填入流水號", "fillSerials")
     .addItem("簽發選取的列", "signSelectedRows")
-    .addItem("產生實體票", "generatePhysicalTickets")
+    .addItem("產生實體票", "showPhysicalSidebar")
     .addItem("測試規則", "testRule")
     .addSeparator()
     .addItem("產生金鑰對", "generateKeyPair")
@@ -87,6 +91,10 @@ function withDeployment(render: (id: string) => GoogleAppsScript.HTML.HtmlOutput
 export function showSidebar(): void {
   const html = withDeployment((id) => HtmlService.createHtmlOutput(sidebar(id)));
   SpreadsheetApp.getUi().showSidebar(html.setTitle("報到"));
+}
+
+export function showPhysicalSidebar(): void {
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutput(PHYSICAL_SIDEBAR).setTitle("產生實體票"));
 }
 
 export function showStaffLink(): void {

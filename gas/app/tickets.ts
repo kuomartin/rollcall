@@ -35,10 +35,15 @@ export const TICKET_FIELD = "票券";
 export const TICKET_QR_FIELD = "票券 QR";
 const TICKET_COLUMNS = [SERIAL_FIELD, TICKET_FIELD, TICKET_QR_FIELD];
 const QR_SIZE_PX = 120;
-const MAX_PHYSICAL = 500;
 const MAX_WIDTH = 10;
 const MAX_LISTED_ERRORS = 20;
 const LOCK_WAIT_MS = 20_000;
+/**
+ * 寫一張 QR 儲存格圖片實測約 0.7 秒，與圖片大小無關；選單動作單次最多執行 6 分鐘，
+ * 所以補 QR 到這個時間就停下，再執行一次會從沒補到的列接著做。
+ */
+const QR_BUDGET_MS = 270_000;
+const QR_BATCH = 20;
 
 type Sheet = GoogleAppsScript.Spreadsheet.Sheet;
 
@@ -65,7 +70,7 @@ export function randomBytes(n: number): Uint8Array {
   return out;
 }
 
-function currentKeys(): KeyPair | null {
+export function currentKeys(): KeyPair | null {
   const stored = signingKeys();
   const seed = stored && fromBase64url(stored.seed);
   return seed ? keyPairFromSeed(seed) : null;
@@ -223,7 +228,7 @@ function reserve(prefix: string, use: PrefixUse, width: number, count: number, t
   });
 }
 
-interface RosterColumns {
+export interface RosterColumns {
   sheet: Sheet;
   headers: readonly string[];
   rows: readonly (readonly unknown[])[];
@@ -233,11 +238,11 @@ interface RosterColumns {
   qr: number;
 }
 
-function rosterColumns(): RosterColumns | null {
+export function rosterColumns(alert = true): RosterColumns | null {
   const roster = readRoster();
   const [code, serial, ticket, qr] = [CODE_FIELD, ...TICKET_COLUMNS].map((h) => roster.headers.indexOf(h));
   if ([code, serial, ticket, qr].includes(-1)) {
-    ui().alert(`學員名單缺少「${[CODE_FIELD, ...TICKET_COLUMNS].join("、")}」其中的欄位。請先在「報到 → 設定」切換成票券模式。`);
+    if (alert) ui().alert(`學員名單缺少「${[CODE_FIELD, ...TICKET_COLUMNS].join("、")}」其中的欄位。請先在「報到 → 設定」切換成票券模式。`);
     return null;
   }
   return { sheet: rosterSheet(), headers: roster.headers, rows: roster.rows, code, serial, ticket, qr };
@@ -286,16 +291,22 @@ function runs(rows: number[]): number[][] {
   return out;
 }
 
-/**
- * 簽發選取的列：全部合格才簽，有任何一列不合格就整批不簽並列出問題。
- * 票券在目前的金鑰下已經對得上序號的列略過，所以改了序號或換了金鑰，重跑一次就會更新。
- */
-export function signSelectedRows(): void {
-  const keys = requireKeys();
-  const cols = keys && rosterColumns();
-  const selected = cols && selectedRosterRows();
-  if (!keys || !cols || !selected) return;
+/** 儲存格裡是這張票券的 QR 圖：寫入時把票券放在替代文字。 */
+function hasQr(cell: unknown, token: string): boolean {
+  const image = cell as Partial<GoogleAppsScript.Spreadsheet.CellImage> | null;
+  return typeof image?.getAltTextTitle === "function" && image.getAltTextTitle() === token;
+}
 
+export type SignResult =
+  | { ok: false; errors: string[] }
+  | { ok: true; resigned: number; kept: number; redrawn: number; remaining: number };
+
+/**
+ * 簽發學員名單上的這些列（0 起算的資料列）：全部合格才簽，有任何一列不合格就整批不簽並回傳問題。
+ * 票券在目前的金鑰下已經對得上序號的列不重簽，所以改了序號或換了金鑰，重跑一次就會更新；
+ * 但 QR 圖缺了或不是這張票券的就補上，列高也一律設好。
+ */
+export function signRosterRows(keys: KeyPair, cols: RosterColumns, selected: readonly number[]): SignResult {
   const counts = new Map<string, number>();
   for (const r of cols.rows) {
     const s = text(r[cols.serial]);
@@ -315,60 +326,169 @@ export function signSelectedRows(): void {
     else if (!text(row[cols.code])) errors.push(`${where}：學員代號空白`);
     else candidates.push(i);
   }
-  if (errors.length) {
-    const listed = errors.slice(0, MAX_LISTED_ERRORS).join("\n");
-    const more = errors.length > MAX_LISTED_ERRORS ? `\n…另有 ${errors.length - MAX_LISTED_ERRORS} 列` : "";
+  if (errors.length) return { ok: false, errors };
+
+  const tokens = new Map<number, string>();
+  const resigned: number[] = [];
+  for (const i of candidates) {
+    const serial = text(cols.rows[i][cols.serial]);
+    const existing = text(cols.rows[i][cols.ticket]);
+    if (verifyToken(keys.publicKey, existing) === serial) {
+      tokens.set(i, existing);
+    } else {
+      tokens.set(i, sign(keys.secretKey, serial));
+      resigned.push(i);
+    }
+  }
+  const missingQr = candidates.filter((i) => !hasQr(cols.rows[i][cols.qr], tokens.get(i)!));
+
+  for (const run of runs(resigned)) {
+    cols.sheet.getRange(run[0] + 2, cols.ticket + 1, run.length, 1).setValues(run.map((i) => [tokens.get(i)!]));
+  }
+  for (const run of runs(candidates)) cols.sheet.setRowHeightsForced(run[0] + 2, run.length, QR_SIZE_PX);
+  if (resigned.length) bumpRosterVersion();
+  SpreadsheetApp.flush();
+
+  const started = Date.now();
+  let drawn = 0;
+  while (drawn < missingQr.length && Date.now() - started < QR_BUDGET_MS) {
+    const batch = missingQr.slice(drawn, drawn + QR_BATCH);
+    for (const run of runs(batch)) {
+      cols.sheet.getRange(run[0] + 2, cols.qr + 1, run.length, 1).setValues(run.map((i) => [qrCellImage(tokens.get(i)!)]));
+    }
+    SpreadsheetApp.flush();
+    drawn += batch.length;
+  }
+  const resignedSet = new Set(resigned);
+  return {
+    ok: true,
+    resigned: resigned.length,
+    kept: candidates.length - resigned.length,
+    redrawn: missingQr.slice(0, drawn).filter((i) => !resignedSet.has(i)).length,
+    remaining: missingQr.length - drawn,
+  };
+}
+
+export function signSelectedRows(): void {
+  const keys = requireKeys();
+  const cols = keys && rosterColumns();
+  const selected = cols && selectedRosterRows();
+  if (!keys || !cols || !selected) return;
+  const result = signRosterRows(keys, cols, selected);
+  if (!result.ok) {
+    const listed = result.errors.slice(0, MAX_LISTED_ERRORS).join("\n");
+    const more = result.errors.length > MAX_LISTED_ERRORS ? `\n…另有 ${result.errors.length - MAX_LISTED_ERRORS} 列` : "";
     ui().alert("沒有簽發任何一列", `${listed}${more}`, ui().ButtonSet.OK);
     return;
   }
-
-  const publicKey = keys.publicKey;
-  const todo = candidates.filter((i) => verifyToken(publicKey, text(cols.rows[i][cols.ticket])) !== text(cols.rows[i][cols.serial]));
-  for (const run of runs(todo)) {
-    const tokens = run.map((i) => sign(keys.secretKey, text(cols.rows[i][cols.serial])));
-    cols.sheet.getRange(run[0] + 2, cols.ticket + 1, run.length, 1).setValues(tokens.map((t) => [t]));
-    cols.sheet.getRange(run[0] + 2, cols.qr + 1, run.length, 1).setValues(tokens.map((t) => [qrCellImage(t)]));
-    cols.sheet.setRowHeightsForced(run[0] + 2, run.length, QR_SIZE_PX);
-  }
-  if (todo.length) bumpRosterVersion();
-  ui().alert(`已簽發 ${todo.length} 列；${candidates.length - todo.length} 列的票券仍有效，略過。`);
+  const remaining = result.remaining
+    ? `\n\n還有 ${result.remaining} 列的 QR 沒寫完（每張約需 0.7 秒），請再執行一次「簽發選取的列」接著做。`
+    : "";
+  ui().alert(
+    `已簽發 ${result.resigned} 列；${result.kept} 列的票券仍有效，不重簽` +
+      (result.redrawn ? `，其中 ${result.redrawn} 列補上 QR。` : "。") +
+      remaining,
+  );
 }
 
-export function generatePhysicalTickets(): void {
-  const keys = requireKeys();
-  const asked = keys && askPrefix("產生實體票", "實體");
-  if (!keys || !asked) return;
-  if (!asked.entry) {
+export interface PhysicalForm {
+  hasKeys: boolean;
+  /** 已登記為實體票的前綴與下一號；新前綴才需要填位數。 */
+  prefixes: { prefix: string; next: number; width: number }[];
+  defaultWidth: number;
+}
+
+export function physicalForm(): PhysicalForm {
+  const registry = prefixes();
+  return {
+    hasKeys: signingKeys() !== null,
+    prefixes: Object.entries(registry)
+      .filter(([, e]) => e.use === "實體")
+      .map(([prefix, e]) => ({ prefix, next: e.next, width: e.width })),
+    defaultWidth: DEFAULT_WIDTH,
+  };
+}
+
+/**
+ * 一批實體票：號碼已經發出，由側邊欄分段簽章。
+ * 輸出到分頁時 sheet 是已建好的分頁名稱；輸出成列印頁與 CSV 時為 null，試算表不留任何單張紀錄。
+ */
+export interface PhysicalBatch {
+  sheet: string | null;
+  prefix: string;
+  width: number;
+  first: number;
+  count: number;
+}
+
+/**
+ * 側邊欄按下「產生」：檢查參數、一次發出全部號碼，輸出到分頁時建立分頁。
+ * 簽章交給 signPhysicalChunk／writePhysicalChunk 分段做，張數再多也不會超過 Apps Script 單次執行的時間上限。
+ */
+export function startPhysical(prefixText: string, widthText: string, countText: string, toSheet: boolean): PhysicalBatch {
+  if (!currentKeys()) throw new Error("尚未產生金鑰對，請先執行「票券 → 產生金鑰對」。");
+  const prefix = prefixText.trim();
+  if (!isValidPrefix(prefix)) throw new Error("前綴只能用英數字、- 與 _，而且結尾不能是數字。");
+  const entry = prefixes()[prefix];
+  if (entry && entry.use !== "實體") throw new Error(`前綴「${prefix}」已經用於名單上的序號，一個前綴只能有一種用途。`);
+  if (!entry) {
     const roster = readRoster();
     const col = roster.headers.indexOf(SERIAL_FIELD);
-    const clash = col === -1 ? undefined : roster.rows.map((r) => text(r[col])).find((s) => s && splitPrefix(s).prefix === asked.prefix);
-    if (clash) {
-      ui().alert(`學員名單上已有這個前綴的序號（${clash}），實體票不能用同一個前綴。`);
-      return;
-    }
+    const clash = col === -1 ? undefined : roster.rows.map((r) => text(r[col])).find((s) => s && splitPrefix(s).prefix === prefix);
+    if (clash) throw new Error(`學員名單上已有這個前綴的序號（${clash}），實體票不能用同一個前綴。`);
   }
-  const width = askWidth(asked.prefix, asked.entry);
-  if (!width) return;
-  const res = ui().prompt("產生實體票", `張數（1–${MAX_PHYSICAL}）：`, ui().ButtonSet.OK_CANCEL);
-  if (res.getSelectedButton() !== ui().Button.OK) return;
-  const count = Number(res.getResponseText().trim());
-  if (!Number.isInteger(count) || count < 1 || count > MAX_PHYSICAL) {
-    ui().alert(`張數必須是 1 到 ${MAX_PHYSICAL} 的整數。`);
-    return;
+  const width = entry ? entry.width : widthText.trim() ? Number(widthText) : DEFAULT_WIDTH;
+  if (!Number.isInteger(width) || width < 1 || width > MAX_WIDTH || prefix.length + width > 32) {
+    throw new Error(`位數必須是 1 到 ${MAX_WIDTH} 的整數，而且前綴加位數不超過 32 字。`);
   }
+  const count = Number(countText);
+  if (!Number.isInteger(count) || count < 1) throw new Error("張數必須是正整數。");
 
-  const serials = reserve(asked.prefix, "實體", width, count, new Set());
-  const tokens = serials.map((s) => sign(keys.secretKey, s));
+  const serials = reserveRange(prefix, width, count);
+  const first = Number(splitPrefix(serials.first).digits);
+  if (!toSheet) return { sheet: null, prefix, width, first, count };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.insertSheet(`實體票 ${serials[0]}–${serials[serials.length - 1]}`);
+  const sheet = ss.insertSheet(`實體票 ${serials.first}–${serials.last}`);
+  if (sheet.getMaxRows() < count + 2) sheet.insertRowsAfter(sheet.getMaxRows(), count + 2 - sheet.getMaxRows());
   sheet.getRange(1, 1).setValue("印完請刪除此分頁。試算表不保留實體票的單張紀錄，只記前綴與下一號。");
   sheet.getRange(2, 1, 1, TICKET_COLUMNS.length).setValues([TICKET_COLUMNS]);
   sheet.getRange(3, 1, count, 1).setNumberFormat("@");
-  sheet.getRange(3, 1, count, 3).setValues(serials.map((s, i) => [s, tokens[i], qrCellImage(tokens[i])]));
-  sheet.setRowHeightsForced(3, count, QR_SIZE_PX);
   sheet.setColumnWidth(3, QR_SIZE_PX);
   sheet.setFrozenRows(2);
-  sheet.activate();
+  return { sheet: sheet.getName(), prefix, width, first, count };
+}
+
+/** 實體票只發連續號碼：不跳號，起訖就能代表整批。 */
+function reserveRange(prefix: string, width: number, count: number): { first: string; last: string } {
+  const serials = reserve(prefix, "實體", width, count, new Set());
+  return { first: serials[0], last: serials[serials.length - 1] };
+}
+
+/** 簽出一批實體票的第 offset 張起 n 張，回傳 [序號, 票券]；同一段重簽結果相同，失敗可以重試。 */
+export function signPhysicalChunk(batch: PhysicalBatch, offset: number, n: number): [string, string][] {
+  const keys = currentKeys();
+  if (!keys) throw new Error("找不到金鑰對");
+  const size = Math.min(n, batch.count - offset);
+  return Array.from({ length: size }, (_, k) => {
+    const serial = formatSerial(batch.prefix, batch.first + offset + k, batch.width);
+    return [serial, sign(keys.secretKey, serial)];
+  });
+}
+
+/** 簽出並寫入分頁；一張 QR 儲存格圖片約 0.7 秒，所以這條路比列印頁慢得多。 */
+export function writePhysicalChunk(batch: PhysicalBatch, offset: number, n: number): number {
+  const sheet = batch.sheet && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet);
+  if (!sheet) throw new Error(`找不到「${batch.sheet}」分頁`);
+  const signed = signPhysicalChunk(batch, offset, n);
+  const size = signed.length;
+  const rows = signed.map(([serial, token]) => [serial, token, qrCellImage(token)]);
+  sheet.getRange(3 + offset, 1, size, 3).setValues(rows);
+  sheet.setRowHeightsForced(3 + offset, size, QR_SIZE_PX);
+  return offset + size;
+}
+
+export function showPhysicalSheet(name: string): void {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)?.activate();
 }
 
 export function testRule(): void {
