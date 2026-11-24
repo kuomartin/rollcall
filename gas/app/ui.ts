@@ -299,3 +299,116 @@ export const PHYSICAL_SIDEBAR = `${STYLE}
   $("resume").addEventListener("click", () => { $("resume").hidden = true; next(); });
   load();
 </script>`;
+
+/**
+ * 序號側邊欄：在名單分頁填入流水號，並列出所有前綴。
+ * 名單用途的前綴可以把下一號改成任意值或刪除登記；實體票的前綴只顯示，換金鑰對時才能歸零。
+ */
+export const SERIALS_SIDEBAR = `${STYLE}
+<style>
+  .note { color: #666; font-size: 0.9em; }
+  .prefix { border-top: 1px solid #ddd; padding: 8px 0; }
+  .prefix b { font-family: monospace; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row input { flex: 1; min-width: 0; }
+  .row button { margin-top: 0; }
+</style>
+<h3>填入流水號</h3>
+<p class="note" id="where"></p>
+<label>前綴（結尾不能是數字，例如 VIP-）</label>
+<input type="text" id="prefix" list="known" autocomplete="off">
+<datalist id="known"></datalist>
+<p id="hint" class="note"></p>
+<div id="widthRow">
+  <label>流水號位數</label>
+  <input type="text" id="width" inputmode="numeric">
+</div>
+<button id="fill">填入選取的格子</button>
+<p id="msg"></p>
+<h3>前綴</h3>
+<div id="list"></div>
+<button id="reload">重新整理</button>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const pad = (n, w) => String(n).padStart(w, "0");
+  let form = { roster: "", defaultWidth: 5, prefixes: [] };
+
+  const say = (text, kind) => { $("msg").textContent = text; $("msg").className = kind || ""; };
+  const fail = (e) => say(e.message, "error");
+  const issued = (p) => p.next > 1 ? p.prefix + pad(1, p.width) + "–" + p.prefix + pad(p.next - 1, p.width) : "尚未發號";
+
+  function update() {
+    const known = form.prefixes.find((p) => p.prefix === $("prefix").value.trim());
+    $("widthRow").hidden = !!known;
+    $("hint").textContent = known
+      ? (known.use === "名單" ? "從 " + known.prefix + pad(known.next, known.width) + " 開始，跳過名單上已有的序號" : "這個前綴用於實體票，不能填進名單")
+      : "";
+  }
+
+  function item(p) {
+    const div = document.createElement("div");
+    div.className = "prefix";
+    const head = document.createElement("div");
+    head.innerHTML = "<b></b>（" + p.use + "，" + p.width + " 位）<br><span class=note></span>";
+    head.querySelector("b").textContent = p.prefix;
+    // 名單用途的下一號可以被重設，1 到下一號之前不代表實際用過的號碼，所以只顯示下一號。
+    head.querySelector("span").textContent = p.use === "名單" ? "下一號：" + p.prefix + pad(p.next, p.width) : "已發：" + issued(p);
+    div.append(head);
+    if (p.use !== "名單") {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = "實體票的前綴不能重設：已發出的票會和新票同號。換金鑰對時可以歸零。";
+      div.append(note);
+      return div;
+    }
+    const row = document.createElement("div");
+    row.className = "row";
+    const next = document.createElement("input");
+    next.type = "text";
+    next.inputMode = "numeric";
+    next.value = String(p.next);
+    next.setAttribute("aria-label", p.prefix + " 的下一號");
+    const set = document.createElement("button");
+    set.textContent = "設為下一號";
+    set.addEventListener("click", () => {
+      say("儲存中…");
+      google.script.run.withSuccessHandler(() => { say(p.prefix + " 的下一號改為 " + next.value.trim(), "ok"); load(); })
+        .withFailureHandler(fail).setNextNumber(p.prefix, next.value);
+    });
+    const del = document.createElement("button");
+    del.textContent = "刪除";
+    // 第一次按只改成確認文字，再按一次才刪除。
+    del.addEventListener("click", () => {
+      if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "確定刪除？"; return; }
+      say("刪除中…");
+      google.script.run.withSuccessHandler(() => { say("已刪除 " + p.prefix + "。名單上的序號不受影響。", "ok"); load(); })
+        .withFailureHandler(fail).deletePrefix(p.prefix);
+    });
+    row.append(next, set, del);
+    div.append(row);
+    return div;
+  }
+
+  function load() {
+    google.script.run.withSuccessHandler((f) => {
+      form = f;
+      $("where").textContent = "在名單分頁「" + f.roster + "」選取要填的列；序號欄空白的格子會依序填入。";
+      $("width").placeholder = String(f.defaultWidth);
+      $("known").replaceChildren(...f.prefixes.filter((p) => p.use === "名單").map((p) => new Option(p.prefix)));
+      $("list").replaceChildren(...(f.prefixes.length ? f.prefixes.map(item) : [Object.assign(document.createElement("p"), { className: "note", textContent: "還沒有登記任何前綴。" })]));
+      update();
+    }).withFailureHandler(fail).serialsForm();
+  }
+
+  $("prefix").addEventListener("input", update);
+  $("fill").addEventListener("click", () => {
+    $("fill").disabled = true;
+    say("填入中…");
+    google.script.run
+      .withSuccessHandler((m) => { say(m, "ok"); $("fill").disabled = false; load(); })
+      .withFailureHandler((e) => { fail(e); $("fill").disabled = false; })
+      .fillSelected($("prefix").value, $("width").value);
+  });
+  $("reload").addEventListener("click", load);
+  load();
+</script>`;

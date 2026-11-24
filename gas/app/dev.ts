@@ -9,6 +9,9 @@ import { ensureLogSheet, LOG_HEADERS } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
 import {
   currentKeys,
+  deletePrefix,
+  serialsForm,
+  setNextNumber,
   ensureTicketSheets,
   qrCellImage,
   randomBytes,
@@ -171,6 +174,9 @@ export function devHandle(body: unknown): unknown {
     return storeSettings(template, sessions, mode, roster);
   }
   if (b.action === "devSignAll") return signAll();
+  if (b.action === "devSerialsForm") return serialsForm();
+  if (b.action === "devSetNext" && b.args) return setNextNumber(b.args[0], b.args[1]) ?? "ok";
+  if (b.action === "devDeletePrefix" && b.args) return deletePrefix(b.args[0]) ?? "ok";
   if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""), true);
   if (b.action === "devWriteChunk" && b.batch) return writePhysicalChunk(b.batch, b.offset ?? 0, b.n ?? 100);
   if (b.action === "devPhysicalSummary" && b.batch) return physicalSummary(b.batch);

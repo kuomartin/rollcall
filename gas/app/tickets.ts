@@ -179,32 +179,23 @@ function withLock<T>(fn: () => T): T {
   }
 }
 
-function askPrefix(title: string, use: PrefixUse): { prefix: string; entry?: PrefixEntry } | null {
-  const res = ui().prompt(title, "前綴（結尾不能是數字，例如 P03- 或 VIP_）：", ui().ButtonSet.OK_CANCEL);
-  if (res.getSelectedButton() !== ui().Button.OK) return null;
-  const prefix = res.getResponseText().trim();
-  if (!isValidPrefix(prefix)) {
-    ui().alert("前綴只能用英數字、- 與 _，而且結尾不能是數字。");
-    return null;
-  }
+/** 檢查前綴格式與用途；新前綴回傳 entry 為 undefined。 */
+function checkPrefix(prefixText: string, use: PrefixUse): { prefix: string; entry?: PrefixEntry } {
+  const prefix = prefixText.trim();
+  if (!isValidPrefix(prefix)) throw new Error("前綴只能用英數字、- 與 _，而且結尾不能是數字。");
   const entry = prefixes()[prefix];
   if (entry && entry.use !== use) {
-    ui().alert(`前綴「${prefix}」已經用於${entry.use === "實體" ? "實體票" : "名單上的序號"}，一個前綴只能有一種用途。`);
-    return null;
+    throw new Error(`前綴「${prefix}」已經用於${entry.use === "實體" ? "實體票" : "名單上的序號"}，一個前綴只能有一種用途。`);
   }
   return { prefix, entry };
 }
 
-/** 新前綴才問位數，之後固定。 */
-function askWidth(prefix: string, entry: PrefixEntry | undefined): number | null {
+/** 已登記的前綴沿用登記的位數；新前綴用填的值，留空為預設。 */
+function widthFor(prefix: string, entry: PrefixEntry | undefined, widthText: string): number {
   if (entry) return entry.width;
-  const res = ui().prompt("位數", `「${prefix}」的流水號位數（留空為 ${DEFAULT_WIDTH}）：`, ui().ButtonSet.OK_CANCEL);
-  if (res.getSelectedButton() !== ui().Button.OK) return null;
-  const raw = res.getResponseText().trim();
-  const width = raw ? Number(raw) : DEFAULT_WIDTH;
+  const width = widthText.trim() ? Number(widthText) : DEFAULT_WIDTH;
   if (!Number.isInteger(width) || width < 1 || width > MAX_WIDTH || prefix.length + width > 32) {
-    ui().alert(`位數必須是 1 到 ${MAX_WIDTH} 的整數，而且前綴加位數不超過 32 字。`);
-    return null;
+    throw new Error(`位數必須是 1 到 ${MAX_WIDTH} 的整數，而且前綴加位數不超過 32 字。`);
   }
   return width;
 }
@@ -247,37 +238,89 @@ export function rosterColumns(alert = true): RosterColumns | null {
   return { sheet: rosterSheet(), headers: roster.headers, rows: roster.rows, serial, ticket, qr };
 }
 
-/** 選取範圍在學員名單上涵蓋的資料列（0 起算，不含標題列）。 */
-function selectedRosterRows(): number[] | null {
+/** 選取範圍在名單分頁上涵蓋的資料列（0 起算，不含標題列）；沒選在名單分頁上就丟錯。 */
+function selectionRows(): number[] {
   const range = SpreadsheetApp.getActiveRange();
   const name = rosterSheet().getName();
-  if (!range || range.getSheet().getName() !== name) {
-    ui().alert(`請先在名單分頁「${name}」選取要處理的列。`);
-    return null;
-  }
+  if (!range || range.getSheet().getName() !== name) throw new Error(`請先在名單分頁「${name}」選取要處理的列。`);
   const first = Math.max(2, range.getRow());
   const last = range.getLastRow();
   return Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => first + i - 2);
 }
 
-export function fillSerials(): void {
-  const cols = rosterColumns();
-  const selected = cols && selectedRosterRows();
-  if (!cols || !selected) return;
-  const blanks = selected.filter((i) => i < cols.rows.length && !text(cols.rows[i][cols.serial]));
-  if (!blanks.length) {
-    ui().alert("選取的列都已經有序號，或超出名單範圍。");
-    return;
+function selectedRosterRows(): number[] | null {
+  try {
+    return selectionRows();
+  } catch (err) {
+    ui().alert(err instanceof Error ? err.message : String(err));
+    return null;
   }
-  const asked = askPrefix("填入流水號", "名單");
-  const width = asked && askWidth(asked.prefix, asked.entry);
-  if (!asked || !width) return;
+}
+
+export interface SerialsForm {
+  roster: string;
+  defaultWidth: number;
+  prefixes: { prefix: string; use: PrefixUse; next: number; width: number }[];
+}
+
+/** 序號側邊欄：名單分頁名稱與所有登記的前綴。 */
+export function serialsForm(): SerialsForm {
+  return {
+    roster: rosterSheet().getName(),
+    defaultWidth: DEFAULT_WIDTH,
+    prefixes: Object.entries(prefixes())
+      .map(([prefix, e]) => ({ prefix, ...e }))
+      .sort((x, y) => x.prefix.localeCompare(y.prefix)),
+  };
+}
+
+/** 在名單分頁選取的列中，序號空白的格子依序填入流水號，跳過名單上已有的序號。 */
+export function fillSelected(prefixText: string, widthText: string): string {
+  const cols = rosterColumns(false);
+  if (!cols) throw new Error(`名單分頁缺少「${TICKET_COLUMNS.join("、")}」其中的欄位。請先在「報到 → 設定」切換成票券模式。`);
+  const blanks = selectionRows().filter((i) => i < cols.rows.length && !text(cols.rows[i][cols.serial]));
+  if (!blanks.length) throw new Error("選取的列都已經有序號，或超出名單範圍。");
+  const { prefix, entry } = checkPrefix(prefixText, "名單");
+  const width = widthFor(prefix, entry, widthText);
 
   const taken = new Set(cols.rows.map((r) => text(r[cols.serial])).filter(Boolean));
-  const serials = reserve(asked.prefix, "名單", width, blanks.length, taken);
+  const serials = reserve(prefix, "名單", width, blanks.length, taken);
   blanks.forEach((i, k) => cols.sheet.getRange(i + 2, cols.serial + 1).setValue(serials[k]));
   bumpRosterVersion();
-  ui().alert(`已填入 ${serials.length} 個序號（${serials[0]}–${serials[serials.length - 1]}）。接著用「票券 → 簽發選取的列」簽發。`);
+  return `已填入 ${serials.length} 個序號（${serials[0]}–${serials[serials.length - 1]}）。接著用「票券 → 簽發選取的列」簽發。`;
+}
+
+/**
+ * 只有名單用途的前綴能重設：填號時會跳過名單上已有的序號，調小也不會撞號。
+ * 實體票不留單張紀錄，調小後再發會有兩張同號的有效票，只能在換金鑰對時歸零。
+ */
+function listPrefix(prefix: string): PrefixEntry {
+  const entry = prefixes()[prefix];
+  if (!entry) throw new Error(`沒有「${prefix}」這個前綴`);
+  if (entry.use !== "名單") throw new Error("實體票的前綴不能重設，只能在「產生金鑰對」時歸零。");
+  return entry;
+}
+
+export function setNextNumber(prefix: string, nextText: string): void {
+  const entry = listPrefix(prefix);
+  const next = Number(nextText);
+  if (!Number.isInteger(next) || next < 1) throw new Error("下一號必須是正整數。");
+  if (!isValidSerial(formatSerial(prefix, next, entry.width))) throw new Error("前綴加號碼超過 32 字。");
+  withLock(() => {
+    const registry = prefixes();
+    registry[prefix] = { ...listPrefix(prefix), next };
+    storePrefixes(registry);
+  });
+}
+
+/** 刪除名單用途的前綴登記；名單上的序號不動，之後可以用新的位數重新登記。 */
+export function deletePrefix(prefix: string): void {
+  listPrefix(prefix);
+  withLock(() => {
+    const registry = prefixes();
+    delete registry[prefix];
+    storePrefixes(registry);
+  });
 }
 
 /** 連續的列合併成一段，一次寫入。 */
@@ -426,20 +469,14 @@ export interface PhysicalBatch {
  */
 export function startPhysical(prefixText: string, widthText: string, countText: string, toSheet: boolean): PhysicalBatch {
   if (!currentKeys()) throw new Error("尚未產生金鑰對，請先執行「票券 → 產生金鑰對」。");
-  const prefix = prefixText.trim();
-  if (!isValidPrefix(prefix)) throw new Error("前綴只能用英數字、- 與 _，而且結尾不能是數字。");
-  const entry = prefixes()[prefix];
-  if (entry && entry.use !== "實體") throw new Error(`前綴「${prefix}」已經用於名單上的序號，一個前綴只能有一種用途。`);
+  const { prefix, entry } = checkPrefix(prefixText, "實體");
   if (!entry) {
     const roster = readRoster();
     const col = roster.headers.indexOf(SERIAL_FIELD);
     const clash = col === -1 ? undefined : roster.rows.map((r) => text(r[col])).find((s) => s && splitPrefix(s).prefix === prefix);
     if (clash) throw new Error(`學員名單上已有這個前綴的序號（${clash}），實體票不能用同一個前綴。`);
   }
-  const width = entry ? entry.width : widthText.trim() ? Number(widthText) : DEFAULT_WIDTH;
-  if (!Number.isInteger(width) || width < 1 || width > MAX_WIDTH || prefix.length + width > 32) {
-    throw new Error(`位數必須是 1 到 ${MAX_WIDTH} 的整數，而且前綴加位數不超過 32 字。`);
-  }
+  const width = widthFor(prefix, entry, widthText);
   const count = Number(countText);
   if (!Number.isInteger(count) || count < 1) throw new Error("張數必須是正整數。");
 

@@ -19,7 +19,16 @@ import { ensureLogSheet, readRoster, rosterSheet } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
 import { ensureTicketSheets, RULES_SHEET } from "./tickets.ts";
 import { ensureWorkbook } from "./workbook.ts";
-import { CLEAR_DIALOG, NEED_SETUP, PHYSICAL_SIDEBAR, SETTINGS_DIALOG, setupPage, sidebar, staffLinkDialog } from "./ui.ts";
+import {
+  CLEAR_DIALOG,
+  NEED_SETUP,
+  PHYSICAL_SIDEBAR,
+  SERIALS_SIDEBAR,
+  SETTINGS_DIALOG,
+  setupPage,
+  sidebar,
+  staffLinkDialog,
+} from "./ui.ts";
 
 function json(body: ApiResponse<unknown>): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
@@ -49,8 +58,11 @@ export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
 }
 
 export {
-  fillSerials,
+  deletePrefix,
+  fillSelected,
   generateKeyPair,
+  serialsForm,
+  setNextNumber,
   physicalForm,
   showPhysicalSheet,
   signPhysicalChunk,
@@ -71,7 +83,7 @@ function addMenus(): void {
     .addToUi();
   if (getSettings().mode !== "ticket") return;
   ui.createMenu("票券")
-    .addItem("填入流水號", "fillSerials")
+    .addItem("序號：填入流水號、重設", "showSerialsSidebar")
     .addItem("簽發選取的列", "signSelectedRows")
     .addItem("產生實體票", "showPhysicalSidebar")
     .addItem("測試規則", "testRule")
@@ -99,6 +111,10 @@ function withDeployment(render: (id: string) => GoogleAppsScript.HTML.HtmlOutput
 export function showSidebar(): void {
   const html = withDeployment((id) => HtmlService.createHtmlOutput(sidebar(id)));
   SpreadsheetApp.getUi().showSidebar(html.setTitle("報到"));
+}
+
+export function showSerialsSidebar(): void {
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutput(SERIALS_SIDEBAR).setTitle("序號"));
 }
 
 export function showPhysicalSidebar(): void {
