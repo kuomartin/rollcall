@@ -6,8 +6,16 @@ import { unknownFields } from "../../core/template.ts";
 import { handle } from "./api.ts";
 import { devHandle } from "./dev.ts";
 import type { Mode } from "../../core/api.ts";
-import { bumpRosterVersion, deploymentId, getSettings, parseSessions, saveSettings, storeDeploymentId } from "./settings.ts";
-import { ensureLogSheet, readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
+import {
+  bumpRosterVersion,
+  deploymentId,
+  getSettings,
+  parseSessions,
+  rosterSheetName,
+  saveSettings,
+  storeDeploymentId,
+} from "./settings.ts";
+import { ensureLogSheet, readRoster, rosterSheet } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
 import { ensureTicketSheets, RULES_SHEET } from "./tickets.ts";
 import { ensureWorkbook } from "./workbook.ts";
@@ -80,7 +88,7 @@ export function onOpen(): void {
 /** simple trigger：學員名單或票種規則被手動編輯時，讓各裝置重抓。script 自己的寫入不會觸發。 */
 export function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
   const name = e.range.getSheet().getName();
-  if (name === ROSTER_SHEET || name === RULES_SHEET) bumpRosterVersion();
+  if (name === rosterSheetName() || name === RULES_SHEET) bumpRosterVersion();
 }
 
 function withDeployment(render: (id: string) => GoogleAppsScript.HTML.HtmlOutput): GoogleAppsScript.HTML.HtmlOutput {
@@ -107,25 +115,50 @@ export function showSettings(): void {
   SpreadsheetApp.getUi().showModalDialog(html, "設定");
 }
 
-export function loadSettings(): { template: string; sessions: string[]; mode: Mode; headers: string[] } {
-  return { ...getSettings(), headers: readRoster().headers.filter(Boolean) };
+/** 設定對話框：目前設定、可選作名單的分頁（場次與票種規則分頁除外），以及各分頁的標題列。 */
+export function loadSettings(): {
+  template: string;
+  sessions: string[];
+  mode: Mode;
+  roster: string;
+  sheets: { name: string; headers: string[] }[];
+} {
+  const settings = getSettings();
+  const excluded = new Set([...settings.sessions, RULES_SHEET]);
+  const sheets = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheets()
+    .filter((s) => !excluded.has(s.getName()))
+    .map((s) => ({
+      name: s.getName(),
+      headers: s.getLastColumn() ? s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map((h) => String(h).trim()).filter(Boolean) : [],
+    }));
+  return { ...settings, sheets };
 }
 
-/** 模板引用了學員名單沒有的欄位就不儲存。 */
-export function storeSettings(template: string, sessionsText: string, mode: string): { ok: true } | { ok: false; error: string } {
+/** 名單分頁不存在、缺必要欄位，或模板引用了名單沒有的欄位，就不儲存。 */
+export function storeSettings(
+  template: string,
+  sessionsText: string,
+  mode: string,
+  rosterText: string,
+): { ok: true } | { ok: false; error: string } {
   if (mode !== "code" && mode !== "ticket") return { ok: false, error: "未知的模式" };
-  const headers = readRoster().headers;
+  const roster = rosterText.trim();
+  if (!roster) return { ok: false, error: "請選擇名單分頁" };
+  if (roster === RULES_SHEET) return { ok: false, error: `名單分頁不能是「${RULES_SHEET}」` };
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(roster)) return { ok: false, error: `找不到「${roster}」分頁` };
+  const headers = readRoster(roster).headers;
   const missing = missingRequired(headers, mode === "ticket");
-  if (missing.length) return { ok: false, error: `學員名單缺少欄位：${missing.join("、")}` };
+  if (missing.length) return { ok: false, error: `名單分頁「${roster}」缺少欄位：${missing.join("、")}` };
   const unknown = unknownFields(template, headers);
-  if (unknown.length) return { ok: false, error: `學員名單沒有這些欄位：${unknown.join("、")}` };
+  if (unknown.length) return { ok: false, error: `名單分頁「${roster}」沒有這些欄位：${unknown.join("、")}` };
   const sessions = parseSessions(sessionsText);
   if (!sessions.length) return { ok: false, error: "至少要有一個場次" };
-  if (sessions.includes(ROSTER_SHEET) || sessions.includes(RULES_SHEET)) {
-    return { ok: false, error: `場次不能叫「${ROSTER_SHEET}」或「${RULES_SHEET}」` };
+  if (sessions.includes(roster) || sessions.includes(RULES_SHEET)) {
+    return { ok: false, error: `場次不能叫「${roster}」或「${RULES_SHEET}」` };
   }
 
-  saveSettings({ template, sessions, mode });
+  saveSettings({ template, sessions, mode, roster });
   sessions.forEach(ensureLogSheet);
   ensureMarkColumns(sessions);
   if (mode === "ticket") ensureTicketSheets();

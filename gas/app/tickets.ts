@@ -28,7 +28,7 @@ import {
   type PrefixEntry,
   type PrefixUse,
 } from "./settings.ts";
-import { readRoster, ROSTER_SHEET, rosterSheet } from "./sheets.ts";
+import { readRoster, rosterSheet } from "./sheets.ts";
 
 export const RULES_SHEET = "票種規則";
 export const TICKET_FIELD = "票券";
@@ -250,8 +250,9 @@ export function rosterColumns(alert = true): RosterColumns | null {
 /** 選取範圍在學員名單上涵蓋的資料列（0 起算，不含標題列）。 */
 function selectedRosterRows(): number[] | null {
   const range = SpreadsheetApp.getActiveRange();
-  if (!range || range.getSheet().getName() !== ROSTER_SHEET) {
-    ui().alert(`請先在「${ROSTER_SHEET}」選取要處理的列。`);
+  const name = rosterSheet().getName();
+  if (!range || range.getSheet().getName() !== name) {
+    ui().alert(`請先在名單分頁「${name}」選取要處理的列。`);
     return null;
   }
   const first = Math.max(2, range.getRow());

@@ -2,9 +2,10 @@
 // 正式建置時 __DEV__ 為 false，doPost 不會呼叫這裡，esbuild 會把整段移除。
 
 import nacl from "tweetnacl";
+import { storeSettings } from "./main.ts";
 import { keyPairFromSeed, sign, toBase64url } from "../../core/serial.ts";
-import { bumpRosterVersion, saveSettings, storePrefixes, storeSigningKeys } from "./settings.ts";
-import { ensureLogSheet, LOG_HEADERS, ROSTER_SHEET } from "./sheets.ts";
+import { bumpRosterVersion, DEFAULT_ROSTER_SHEET, saveSettings, storePrefixes, storeSigningKeys } from "./settings.ts";
+import { ensureLogSheet, LOG_HEADERS } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
 import {
   currentKeys,
@@ -26,7 +27,7 @@ const DEV_HEADERS = ["學員代號", "姓名", "手機", "班級"];
 function seed(count: number, sessions: string[]): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   ss.setSpreadsheetTimeZone("Asia/Taipei");
-  const roster = ss.getSheetByName(ROSTER_SHEET) ?? ss.insertSheet(ROSTER_SHEET, 0);
+  const roster = ss.getSheetByName(DEFAULT_ROSTER_SHEET) ?? ss.insertSheet(DEFAULT_ROSTER_SHEET, 0);
   roster.clear();
   const rows = Array.from({ length: count }, (_, i) => [
     `T${String(i + 1).padStart(4, "0")}`,
@@ -42,7 +43,7 @@ function seed(count: number, sessions: string[]): unknown {
     if (existing) ss.deleteSheet(existing);
     ensureLogSheet(session).getRange(1, LOG_HEADERS.length + 1, 1, 2).setValues([["姓名", "班級"]]);
   }
-  saveSettings({ template: "報到成功；姓名：{{姓名}}，班級：{{班級}}", sessions, mode: "code" });
+  saveSettings({ template: "報到成功；姓名：{{姓名}}，班級：{{班級}}", sessions, mode: "code", roster: DEFAULT_ROSTER_SHEET });
   ensureMarkColumns(sessions);
   const props = PropertiesService.getScriptProperties();
   for (const key of props.getKeys()) if (key === "seq" || key.startsWith("row:")) props.deleteProperty(key);
@@ -56,7 +57,7 @@ function seed(count: number, sessions: string[]): unknown {
  */
 function ticketSeed(signed: number, sessions: string[], blankCodes: number): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  saveSettings({ template: "報到成功；姓名：{{姓名}}", sessions, mode: "ticket" });
+  saveSettings({ template: "報到成功；姓名：{{姓名}}", sessions, mode: "ticket", roster: DEFAULT_ROSTER_SHEET });
   const rules = ss.getSheetByName(RULES_SHEET);
   if (rules) ss.deleteSheet(rules);
   ensureTicketSheets();
@@ -70,7 +71,7 @@ function ticketSeed(signed: number, sessions: string[], blankCodes: number): unk
   const keys = keyPairFromSeed(seed);
   storeSigningKeys(toBase64url(seed), toBase64url(keys.publicKey));
 
-  const roster = ss.getSheetByName(ROSTER_SHEET)!;
+  const roster = ss.getSheetByName(DEFAULT_ROSTER_SHEET)!;
   const headers = roster.getRange(1, 1, 1, roster.getLastColumn()).getValues()[0].map(String);
   const col = (h: string) => headers.indexOf(h) + 1;
   const serials = Array.from({ length: signed }, (_, i) => `E${String(i + 1).padStart(5, "0")}`);
@@ -128,6 +129,12 @@ function physicalSummary(batch: PhysicalBatch): unknown {
   };
 }
 
+/** 把名單分頁改名，模擬主辦方用自己的分頁名稱。 */
+function renameRoster(from: string, to: string): unknown {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(from)!.setName(to);
+  return { renamed: to };
+}
+
 function dump(): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   return Object.fromEntries(
@@ -151,10 +158,18 @@ export function devHandle(body: unknown): unknown {
     batch?: PhysicalBatch;
     offset?: number;
     n?: number;
+    from?: string;
+    to?: string;
+    args?: string[];
   };
   if (b.action === "devSeed") return seed(b.count ?? 40, b.sessions ?? ["報到"]);
   if (b.action === "devDump") return dump();
   if (b.action === "devRules" && b.rows) return setRules(b.rows);
+  if (b.action === "devRenameRoster" && b.from && b.to) return renameRoster(b.from, b.to);
+  if (b.action === "devStoreSettings" && b.args) {
+    const [template, sessions, mode, roster] = b.args;
+    return storeSettings(template, sessions, mode, roster);
+  }
   if (b.action === "devSignAll") return signAll();
   if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""), true);
   if (b.action === "devWriteChunk" && b.batch) return writePhysicalChunk(b.batch, b.offset ?? 0, b.n ?? 100);

@@ -68,7 +68,9 @@ export const SETTINGS_DIALOG = `${STYLE}
   <option value="code">代號模式：掃學員代號或條碼、可輸入代號或手機</option>
   <option value="ticket">票券模式：只掃簽章的票券 QR，訊息由「票種規則」決定</option>
 </select>
-<label>報到成功訊息（代號模式用；用 {{欄位名稱}} 代入學員名單的欄位）</label>
+<label>名單分頁（第 1 列是欄位名稱）</label>
+<select id="roster"></select>
+<label>報到成功訊息（代號模式用；用 {{欄位名稱}} 代入名單的欄位）</label>
 <textarea id="template" rows="4"></textarea>
 <label>場次（每個場次一個報到分頁，用逗號分隔）</label>
 <input type="text" id="sessions">
@@ -77,12 +79,24 @@ export const SETTINGS_DIALOG = `${STYLE}
 <p id="msg"></p>
 <script>
   const $ = (id) => document.getElementById(id);
+  let sheets = [];
+  const showHeaders = () => {
+    const sheet = sheets.find((x) => x.name === $("roster").value);
+    $("headers").textContent = sheet ? "名單欄位：" + (sheet.headers.join("、") || "（第 1 列是空的）") : "";
+  };
   google.script.run.withSuccessHandler((s) => {
+    sheets = s.sheets;
     $("template").value = s.template;
     $("sessions").value = s.sessions.join(", ");
     $("mode").value = s.mode;
-    $("headers").textContent = "學員名單欄位：" + s.headers.join("、");
+    const names = s.sheets.map((x) => x.name);
+    // 設定的名單分頁不見了（被改名或刪除）也列出來，讓主辦方看得到要改。
+    if (!names.includes(s.roster)) names.unshift(s.roster);
+    $("roster").replaceChildren(...names.map((n) => new Option(n, n)));
+    $("roster").value = s.roster;
+    showHeaders();
   }).loadSettings();
+  $("roster").addEventListener("change", showHeaders);
   $("save").addEventListener("click", () => {
     $("msg").textContent = "儲存中…";
     $("msg").className = "";
@@ -92,7 +106,7 @@ export const SETTINGS_DIALOG = `${STYLE}
         $("msg").className = r.ok ? "ok" : "error";
       })
       .withFailureHandler((e) => { $("msg").textContent = e.message; $("msg").className = "error"; })
-      .storeSettings($("template").value, $("sessions").value, $("mode").value);
+      .storeSettings($("template").value, $("sessions").value, $("mode").value, $("roster").value);
   });
 </script>`;
 

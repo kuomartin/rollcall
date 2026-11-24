@@ -1,8 +1,8 @@
-// 試算表的分頁結構：學員名單與各場次的報到分頁。
+// 試算表的分頁結構：名單分頁（預設叫「學員名單」，可在設定改）與各場次的報到分頁。
 
 import { CODE_FIELD, type RosterTable } from "../../core/roster.ts";
+import { rosterSheetName } from "./settings.ts";
 
-export const ROSTER_SHEET = "學員名單";
 export const LOG_HEADERS = ["seq", "scanId", "時間", CODE_FIELD, "deviceId"];
 const FIXED = LOG_HEADERS.length;
 export const DATETIME_FORMAT = "yyyy/mm/dd hh:mm:ss";
@@ -13,14 +13,14 @@ function spreadsheet(): GoogleAppsScript.Spreadsheet.Spreadsheet {
   return SpreadsheetApp.getActiveSpreadsheet();
 }
 
-export function rosterSheet(): Sheet {
-  const sheet = spreadsheet().getSheetByName(ROSTER_SHEET);
-  if (!sheet) throw new Error(`找不到「${ROSTER_SHEET}」分頁`);
+export function rosterSheet(name = rosterSheetName()): Sheet {
+  const sheet = spreadsheet().getSheetByName(name);
+  if (!sheet) throw new Error(`找不到名單分頁「${name}」，請在「報到 → 設定」選擇名單分頁`);
   return sheet;
 }
 
-export function readRoster(): RosterTable {
-  const [headers = [], ...rows] = rosterSheet().getDataRange().getValues();
+export function readRoster(name?: string): RosterTable {
+  const [headers = [], ...rows] = rosterSheet(name).getDataRange().getValues();
   return { headers: headers.map((h) => String(h).trim()), rows };
 }
 

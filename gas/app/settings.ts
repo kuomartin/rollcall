@@ -6,6 +6,7 @@ const KEY = {
   template: "template",
   sessions: "sessions",
   mode: "mode",
+  roster: "rosterSheet",
   rosterVersion: "rosterVersion",
   deploymentId: "deploymentId",
   seed: "SIGNING_SEED",
@@ -16,11 +17,14 @@ const GATE_PREFIX = "gate:";
 
 export const DEFAULT_TEMPLATE = "報到成功：{{姓名}}";
 export const DEFAULT_SESSIONS = ["報到"];
+export const DEFAULT_ROSTER_SHEET = "學員名單";
 
 export interface Settings {
   template: string;
   sessions: string[];
   mode: Mode;
+  /** 名單來源的分頁名稱。 */
+  roster: string;
 }
 
 function props(): GoogleAppsScript.Properties.Properties {
@@ -38,7 +42,18 @@ export function getSettings(): Settings {
     template: p.getProperty(KEY.template) ?? DEFAULT_TEMPLATE,
     sessions: sessions ? (JSON.parse(sessions) as string[]) : DEFAULT_SESSIONS,
     mode: p.getProperty(KEY.mode) === "ticket" ? "ticket" : "code",
+    roster: p.getProperty(KEY.roster) ?? DEFAULT_ROSTER_SHEET,
   };
+}
+
+/** 主辦方儲存過設定：之後名單分頁不見了是被改名或刪掉，不是第一次開啟。 */
+export function rosterSheetConfigured(): boolean {
+  return props().getProperty(KEY.roster) !== null;
+}
+
+/** 名單分頁的名稱；每次同步都要讀名單，所以只讀這一個值。 */
+export function rosterSheetName(): string {
+  return props().getProperty(KEY.roster) ?? DEFAULT_ROSTER_SHEET;
 }
 
 export function saveSettings(settings: Settings): void {
@@ -46,6 +61,7 @@ export function saveSettings(settings: Settings): void {
     [KEY.template]: settings.template,
     [KEY.sessions]: JSON.stringify(settings.sessions),
     [KEY.mode]: settings.mode,
+    [KEY.roster]: settings.roster,
   });
   bumpRosterVersion();
 }
