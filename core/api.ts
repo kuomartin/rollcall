@@ -17,7 +17,9 @@ export interface BootstrapResult {
   roster: RosterCache;
   /** 場次 → 學員代號 → 最近報到時間，用來提醒重複報到。 */
   checkedIn: Record<string, Record<string, number>>;
-  /** 舊版 Apps Script 沒有這些欄位：沒有 mode 就是代號模式。 */
+  // 以下欄位舊版 Apps Script 沒有：沒有 mode 就是代號模式。
+  /** 票券模式：場次 → 代號 → 最近一次報到的 deviceId。 */
+  checkedInBy?: Record<string, Record<string, string>>;
   mode?: Mode;
   /** 票券模式：Ed25519 公鑰（base64url）；尚未產生金鑰對時為 null。 */
   publicKey?: string | null;

@@ -44,20 +44,32 @@ export function ensureLogSheet(session: string): Sheet {
   return sheet;
 }
 
-/** 各場次每個代號最近的報到時間，讀自報到分頁。票券模式用：放行的票不在學員名單上，名單的報到時間欄記不到。 */
-export function logCheckInTimes(sessions: readonly string[]): Record<string, Record<string, number>> {
-  const out: Record<string, Record<string, number>> = {};
+/**
+ * 各場次每個代號最近的報到時間與 deviceId，讀自報到分頁。
+ * 票券模式用：放行的票不在學員名單上，名單的報到時間欄記不到；deviceId 用來顯示在哪個入口入場。
+ */
+export function logCheckIns(sessions: readonly string[]): {
+  times: Record<string, Record<string, number>>;
+  by: Record<string, Record<string, string>>;
+} {
+  const times: Record<string, Record<string, number>> = {};
+  const by: Record<string, Record<string, string>> = {};
   for (const session of sessions) {
-    const times: Record<string, number> = {};
+    const t: Record<string, number> = {};
+    const d: Record<string, string> = {};
     const sheet = spreadsheet().getSheetByName(session);
     if (sheet && sheet.getLastRow() >= 2) {
-      for (const [at, code] of sheet.getRange(2, 3, sheet.getLastRow() - 1, 2).getValues()) {
-        const t = at instanceof Date ? at.getTime() : NaN;
+      for (const [at, code, deviceId] of sheet.getRange(2, 3, sheet.getLastRow() - 1, 3).getValues()) {
+        const ms = at instanceof Date ? at.getTime() : NaN;
         const c = String(code ?? "").trim();
-        if (c && Number.isFinite(t) && !(times[c] >= t)) times[c] = t;
+        if (c && Number.isFinite(ms) && !(t[c] >= ms)) {
+          t[c] = ms;
+          d[c] = String(deviceId ?? "");
+        }
       }
     }
-    out[session] = times;
+    times[session] = t;
+    by[session] = d;
   }
-  return out;
+  return { times, by };
 }

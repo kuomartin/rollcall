@@ -5,7 +5,7 @@ import { buildRosterCache, buildTicketCache, cacheFields, cacheRow, checkInTimes
 import { rosterFields } from "../../core/rules.ts";
 import { applySync, type SyncRequest, type SyncResponse } from "../../core/sync.ts";
 import { gates, getSettings, rosterVersion, signingKeys, syncGate } from "./settings.ts";
-import { logCheckInTimes, readRoster } from "./sheets.ts";
+import { logCheckIns, readRoster } from "./sheets.ts";
 import { DeferredRosterStore, LockedLogStore, writeMarks, writeReservations } from "./store.ts";
 import { readRules } from "./tickets.ts";
 
@@ -17,12 +17,14 @@ function bootstrap(): BootstrapResult {
   if (mode === "ticket") {
     // 規則有錯時不送出任何規則：少了一條「拒絕」就可能錯放，掃描頁改為沿用先前的規則。
     const { rules, errors } = readRules();
+    const log = logCheckIns(sessions);
     return {
       sessions,
       template,
       mode,
       roster: buildTicketCache(roster, rosterFields(rules), rosterVersion()),
-      checkedIn: logCheckInTimes(sessions),
+      checkedIn: log.times,
+      checkedInBy: log.by,
       publicKey: signingKeys()?.publicKey ?? null,
       rules: errors.length ? [] : rules,
       ruleErrors: errors,
