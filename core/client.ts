@@ -39,25 +39,41 @@ export class SyncClient {
   }
 }
 
-/** 每個場次裡每位學員最近的報到時間：判斷是不是重複報到。 */
+/** 每個場次裡每位學員最近的報到時間與入口：判斷是不是重複報到、在哪個入口報到。 */
 export class CheckInIndex {
-  #times = new Map<string, number>();
+  #latest = new Map<string, { at: number; deviceId?: string }>();
 
-  load(times: Record<string, Record<string, number>>): void {
-    this.#times.clear();
+  /** by：場次 → 代號 → deviceId；舊版 Apps Script 沒有。 */
+  load(times: Record<string, Record<string, number>>, by: Record<string, Record<string, string>> = {}): void {
+    this.#latest.clear();
     for (const [session, codes] of Object.entries(times)) {
-      for (const [code, at] of Object.entries(codes)) this.add(session, code, at);
+      for (const [code, at] of Object.entries(codes)) this.add(session, code, at, by[session]?.[code]);
     }
   }
 
-  add(session: string, code: string, at: number): void {
+  add(session: string, code: string, at: number, deviceId?: string): void {
     const key = `${session}\u0000${code}`;
-    this.#times.set(key, Math.max(at, this.#times.get(key) ?? 0));
+    const prev = this.#latest.get(key);
+    if (!prev || at > prev.at) this.#latest.set(key, { at, deviceId });
+    else if (at === prev.at && deviceId && !prev.deviceId) prev.deviceId = deviceId;
   }
 
   last(session: string, code: string): number | undefined {
-    return this.#times.get(`${session}\u0000${code}`);
+    return this.#latest.get(`${session}\u0000${code}`)?.at;
   }
+
+  lastDevice(session: string, code: string): string | undefined {
+    return this.#latest.get(`${session}\u0000${code}`)?.deviceId;
+  }
+}
+
+/** 「3 分鐘前」；不到 1 分鐘是「剛剛」。 */
+export function ago(now: number, at: number): string {
+  const minutes = Math.floor(Math.max(0, now - at) / 60_000);
+  if (minutes < 1) return "剛剛";
+  if (minutes < 60) return `${minutes} 分鐘前`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 ? `${hours} 小時 ${minutes % 60} 分鐘前` : `${hours} 小時前`;
 }
 
 export type Connectivity = "ok" | "delayed" | "offline";

@@ -54,7 +54,7 @@ function text(value: unknown): string {
  * Apps Script 沒有 CSPRNG；Utilities.getUuid() 每次給 122 bits 的隨機值，
  * 把多個 UUID 與時間戳一起過 SHA-512 後取所需長度。只用於金鑰種子，序號是流水號不需要亂數。
  */
-function randomBytes(n: number): Uint8Array {
+export function randomBytes(n: number): Uint8Array {
   const out = new Uint8Array(n);
   let filled = 0;
   for (let counter = 0; filled < n; counter++) {
@@ -77,7 +77,7 @@ function requireKeys(): KeyPair | null {
   return keys;
 }
 
-function qrCellImage(token: string): GoogleAppsScript.Spreadsheet.CellImage {
+export function qrCellImage(token: string): GoogleAppsScript.Spreadsheet.CellImage {
   const qr = qrcode(0, "M");
   qr.addData(token);
   qr.make();

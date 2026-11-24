@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CheckInIndex, SyncClient, connectivity } from "./client.ts";
+import { CheckInIndex, SyncClient, ago, connectivity } from "./client.ts";
 import type { LogEntry, Scan } from "./sync.ts";
 
 function scan(scanId: string): Scan {
@@ -97,4 +97,26 @@ test("CheckInIndex.load replaces earlier contents", () => {
   index.load({ "5/22": { A002: 2000 } });
   assert.equal(index.last("5/22", "A001"), undefined);
   assert.equal(index.last("5/22", "A002"), 2000);
+});
+
+test("CheckInIndex remembers the device of the latest check-in", () => {
+  const index = new CheckInIndex();
+  index.load({ 報到: { A001: 1000 } }, { 報到: { A001: "dev-a" } });
+  assert.equal(index.lastDevice("報到", "A001"), "dev-a");
+  index.add("報到", "A001", 500, "dev-old");
+  assert.equal(index.lastDevice("報到", "A001"), "dev-a");
+  index.add("報到", "A001", 2000, "dev-b");
+  assert.equal(index.lastDevice("報到", "A001"), "dev-b");
+  index.add("報到", "A002", 3000);
+  assert.equal(index.lastDevice("報到", "A002"), undefined);
+  index.add("報到", "A002", 3000, "dev-c");
+  assert.equal(index.lastDevice("報到", "A002"), "dev-c");
+});
+
+test("ago rounds down to minutes and hours", () => {
+  assert.equal(ago(59_999, 0), "剛剛");
+  assert.equal(ago(3 * 60_000, 0), "3 分鐘前");
+  assert.equal(ago(60 * 60_000, 0), "1 小時前");
+  assert.equal(ago(75 * 60_000, 0), "1 小時 15 分鐘前");
+  assert.equal(ago(0, 1000), "剛剛");
 });
