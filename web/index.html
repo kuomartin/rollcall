@@ -55,6 +55,8 @@
       .result.warn { background: var(--warn-bg); color: var(--warn-fg); }
       .result button { margin-top: 10px; font-size: 0.8em; font-weight: 600; border-color: currentColor; }
       .result.info { color: var(--muted); font-weight: 400; font-size: 1em; }
+      /* 自動隱藏後保留原本的高度，表單下方不會跳動；疊在相機畫面上時整個消失。 */
+      .result.hidden { visibility: hidden; }
       /* 相機開著時，訊息條疊在畫面上方：手機上不用捲動就看得到結果，掃描區也不會被推下去。 */
       .scan { position: relative; }
       .scan.live .result { position: absolute; top: 20px; left: 8px; right: 8px; margin: 0; z-index: 1; box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); }

@@ -146,9 +146,28 @@ function state(): Connectivity {
   return connectivity({ now: Date.now(), online: navigator.onLine, lastSuccessAt, lastFailureAt, inFlightSince });
 }
 
-function showResult(kind: "ok" | "error" | "info" | "warn", text: string, action?: { label: string; run: () => void }): void {
+const RESULT_HIDE_MS = 5_000;
+let resultTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * 訊息 5 秒後自動隱藏，入口前一位的結果不會留給下一位看。
+ * 帶按鈕的訊息（重複報到要按「仍要報到」）與 sticky 的訊息（載入中、載入失敗）留到被下一則訊息取代。
+ */
+function showResult(
+  kind: "ok" | "error" | "info" | "warn",
+  text: string,
+  action?: { label: string; run: () => void },
+  sticky = false,
+): void {
+  clearTimeout(resultTimer);
   ui.result.className = `result ${kind}`;
   ui.result.textContent = text;
+  if (!action && !sticky) {
+    resultTimer = setTimeout(() => {
+      ui.result.className = "result hidden";
+      ui.result.textContent = "";
+    }, RESULT_HIDE_MS);
+  }
   if (action) {
     const button = document.createElement("button");
     button.type = "button";
@@ -387,7 +406,7 @@ async function checkIn(raw: string, confirmed = false): Promise<void> {
   }
   let row: CacheRow | null;
   try {
-    showResult("info", "查詢中…");
+    showResult("info", "查詢中…", undefined, true);
     row = await resolve(query);
   } catch (err) {
     showResult("error", `查詢失敗：${err instanceof Error ? err.message : err}`);
@@ -505,13 +524,13 @@ ui.camera.addEventListener("click", () => {
 
 async function main(): Promise<void> {
   if (!endpoint) {
-    showResult("error", "連結缺少部署 ID，請向主辦方取得正確的工作人員連結。");
+    showResult("error", "連結缺少部署 ID，請向主辦方取得正確的工作人員連結。", undefined, true);
     return;
   }
   document.body.classList.toggle("sidebar", inSidebar);
   setInterval(renderStatus, 1_000);
   try {
-    showResult("info", "載入名單中…");
+    showResult("info", "載入名單中…", undefined, true);
     await refreshBootstrap();
     lastSuccessAt = Date.now();
     const loaded = config!.mode === "ticket" ? `票券模式：名單上有 ${config!.roster.rows.length} 張票券` : `已載入 ${config!.roster.rows.length} 位學員`;
@@ -519,7 +538,7 @@ async function main(): Promise<void> {
   } catch (err) {
     lastFailureAt = Date.now();
     lastError = err instanceof Error ? err.message : String(err);
-    showResult("error", `載入失敗：${lastError}`);
+    showResult("error", `載入失敗：${lastError}`, undefined, true);
   }
   render();
   schedule(0);
