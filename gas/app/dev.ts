@@ -6,7 +6,20 @@ import { keyPairFromSeed, sign, toBase64url } from "../../core/serial.ts";
 import { bumpRosterVersion, saveSettings, storePrefixes, storeSigningKeys } from "./settings.ts";
 import { ensureLogSheet, LOG_HEADERS, ROSTER_SHEET } from "./sheets.ts";
 import { clearSession, ensureMarkColumns } from "./store.ts";
-import { ensureTicketSheets, qrCellImage, randomBytes, RULES_SHEET, TICKET_FIELD, TICKET_QR_FIELD } from "./tickets.ts";
+import {
+  currentKeys,
+  ensureTicketSheets,
+  qrCellImage,
+  randomBytes,
+  rosterColumns,
+  RULES_SHEET,
+  signRosterRows,
+  startPhysical,
+  TICKET_FIELD,
+  TICKET_QR_FIELD,
+  writePhysicalChunk,
+  type PhysicalBatch,
+} from "./tickets.ts";
 
 const DEV_HEADERS = ["學員代號", "姓名", "手機", "班級"];
 
@@ -87,6 +100,32 @@ function setRules(rows: string[][]): unknown {
   return { rules: rows.length };
 }
 
+/** 簽發學員名單的全部資料列，回傳結果與每列的 QR 替代文字、列高。 */
+function signAll(): unknown {
+  const cols = rosterColumns(false)!;
+  const result = signRosterRows(currentKeys()!, cols, cols.rows.map((_, i) => i));
+  const qr = cols.sheet.getRange(2, cols.qr + 1, cols.rows.length, 1).getValues();
+  return {
+    result,
+    qr: qr.map(([cell], i) => ({
+      alt: (cell as Partial<GoogleAppsScript.Spreadsheet.CellImage>)?.getAltTextTitle?.() ?? null,
+      height: cols.sheet.getRowHeight(i + 2),
+    })),
+  };
+}
+
+function physicalSummary(batch: PhysicalBatch): unknown {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(batch.sheet)!;
+  const values = sheet.getRange(3, 1, batch.count, 3).getValues();
+  return {
+    rows: values.length,
+    first: values[0].slice(0, 2),
+    last: values[values.length - 1].slice(0, 2),
+    images: values.filter((r) => typeof (r[2] as { getAltTextTitle?: unknown })?.getAltTextTitle === "function").length,
+    lastHeight: sheet.getRowHeight(2 + batch.count),
+  };
+}
+
 function dump(): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   return Object.fromEntries(
@@ -98,10 +137,26 @@ function dump(): unknown {
 }
 
 export function devHandle(body: unknown): unknown {
-  const b = body as { action?: string; count?: number; sessions?: string[]; session?: string; signed?: number; rows?: string[][] };
+  const b = body as {
+    action?: string;
+    count?: number;
+    sessions?: string[];
+    session?: string;
+    signed?: number;
+    rows?: string[][];
+    prefix?: string;
+    width?: string;
+    batch?: PhysicalBatch;
+    offset?: number;
+    n?: number;
+  };
   if (b.action === "devSeed") return seed(b.count ?? 40, b.sessions ?? ["報到"]);
   if (b.action === "devDump") return dump();
   if (b.action === "devRules" && b.rows) return setRules(b.rows);
+  if (b.action === "devSignAll") return signAll();
+  if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""));
+  if (b.action === "devWriteChunk" && b.batch) return writePhysicalChunk(b.batch, b.offset ?? 0, b.n ?? 100);
+  if (b.action === "devPhysicalSummary" && b.batch) return physicalSummary(b.batch);
   if (b.action === "devTicketSeed") return ticketSeed(b.signed ?? 5, b.sessions ?? ["報到"]);
   if (b.action === "devClear" && b.session) {
     clearSession(b.session);

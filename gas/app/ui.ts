@@ -128,3 +128,82 @@ export const CLEAR_DIALOG = `${STYLE}
       .clearCheckIns($("session").value, $("confirm").value);
   });
 </script>`;
+
+/**
+ * 產生實體票的側邊欄。號碼在「產生」時一次發出，之後分段簽章寫入並顯示進度；
+ * 某一段失敗時可以從那一段繼續，同一段重寫結果相同。
+ */
+export const PHYSICAL_SIDEBAR = `${STYLE}
+<p>產生不記名的實體票，寫到新的分頁供列印；印完請刪除該分頁。試算表只記前綴與下一號。</p>
+<label>前綴（結尾不能是數字，例如 P03-）</label>
+<input type="text" id="prefix" list="known" autocomplete="off">
+<datalist id="known"></datalist>
+<p id="hint"></p>
+<div id="widthRow">
+  <label>流水號位數</label>
+  <input type="text" id="width" inputmode="numeric">
+</div>
+<label>張數</label>
+<input type="text" id="count" inputmode="numeric">
+<button id="go">產生</button>
+<button id="resume" hidden>從中斷處繼續</button>
+<p id="msg"></p>
+<script>
+  const CHUNK = 100;
+  const $ = (id) => document.getElementById(id);
+  let form = { hasKeys: false, prefixes: [], defaultWidth: 5 };
+  let batch = null;
+  let offset = 0;
+
+  const say = (text, kind) => { $("msg").textContent = text; $("msg").className = kind || ""; };
+  const pad = (n, w) => String(n).padStart(w, "0");
+
+  function update() {
+    const known = form.prefixes.find((p) => p.prefix === $("prefix").value.trim());
+    $("widthRow").hidden = !!known;
+    $("hint").textContent = known ? "從 " + known.prefix + pad(known.next, known.width) + " 開始編號" : "";
+  }
+
+  function load() {
+    google.script.run.withSuccessHandler((f) => {
+      form = f;
+      $("width").placeholder = String(f.defaultWidth);
+      $("known").replaceChildren(...f.prefixes.map((p) => new Option(p.prefix)));
+      if (!f.hasKeys) say("尚未產生金鑰對，請先執行「票券 → 產生金鑰對」。", "error");
+      $("go").disabled = !f.hasKeys;
+      update();
+    }).physicalForm();
+  }
+
+  function next() {
+    if (offset >= batch.count) {
+      const last = batch.prefix + pad(batch.first + batch.count - 1, batch.width);
+      say("完成：" + batch.count + " 張（" + batch.prefix + pad(batch.first, batch.width) + "–" + last + "）。", "ok");
+      $("go").disabled = false;
+      google.script.run.showPhysicalSheet(batch.sheet);
+      load();
+      return;
+    }
+    say("寫入中… " + offset + " / " + batch.count);
+    google.script.run
+      .withSuccessHandler((done) => { offset = done; next(); })
+      .withFailureHandler((e) => {
+        say("在第 " + (offset + 1) + " 張中斷：" + e.message, "error");
+        $("resume").hidden = false;
+      })
+      .writePhysicalChunk(batch, offset, CHUNK);
+  }
+
+  $("prefix").addEventListener("input", update);
+  $("go").addEventListener("click", () => {
+    $("go").disabled = true;
+    $("resume").hidden = true;
+    say("發出號碼中…");
+    google.script.run
+      .withSuccessHandler((b) => { batch = b; offset = 0; next(); })
+      .withFailureHandler((e) => { say(e.message, "error"); $("go").disabled = false; })
+      .startPhysical($("prefix").value, $("width").value, $("count").value);
+  });
+  $("resume").addEventListener("click", () => { $("resume").hidden = true; next(); });
+  load();
+</script>`;
