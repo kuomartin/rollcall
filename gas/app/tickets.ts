@@ -3,7 +3,7 @@
 
 import qrcode from "qrcode-generator";
 import nacl from "tweetnacl";
-import { CODE_FIELD, SERIAL_FIELD } from "../../core/roster.ts";
+import { SERIAL_FIELD } from "../../core/roster.ts";
 import { compileRules, matchRule, parseRules, RULE_ACTIONS, RULE_HEADERS, type Rule } from "../../core/rules.ts";
 import {
   DEFAULT_WIDTH,
@@ -232,7 +232,6 @@ export interface RosterColumns {
   sheet: Sheet;
   headers: readonly string[];
   rows: readonly (readonly unknown[])[];
-  code: number;
   serial: number;
   ticket: number;
   qr: number;
@@ -240,12 +239,12 @@ export interface RosterColumns {
 
 export function rosterColumns(alert = true): RosterColumns | null {
   const roster = readRoster();
-  const [code, serial, ticket, qr] = [CODE_FIELD, ...TICKET_COLUMNS].map((h) => roster.headers.indexOf(h));
-  if ([code, serial, ticket, qr].includes(-1)) {
-    if (alert) ui().alert(`學員名單缺少「${[CODE_FIELD, ...TICKET_COLUMNS].join("、")}」其中的欄位。請先在「報到 → 設定」切換成票券模式。`);
+  const [serial, ticket, qr] = TICKET_COLUMNS.map((h) => roster.headers.indexOf(h));
+  if ([serial, ticket, qr].includes(-1)) {
+    if (alert) ui().alert(`學員名單缺少「${TICKET_COLUMNS.join("、")}」其中的欄位。請先在「報到 → 設定」切換成票券模式。`);
     return null;
   }
-  return { sheet: rosterSheet(), headers: roster.headers, rows: roster.rows, code, serial, ticket, qr };
+  return { sheet: rosterSheet(), headers: roster.headers, rows: roster.rows, serial, ticket, qr };
 }
 
 /** 選取範圍在學員名單上涵蓋的資料列（0 起算，不含標題列）。 */
@@ -323,7 +322,6 @@ export function signRosterRows(keys: KeyPair, cols: RosterColumns, selected: rea
     if (!isValidSerial(serial)) errors.push(`${where}：序號只能用英數字、- 與 _，最長 32 字`);
     else if ((counts.get(serial) ?? 0) > 1) errors.push(`${where}：序號重複`);
     else if (registry[splitPrefix(serial).prefix]?.use === "實體") errors.push(`${where}：前綴已用於實體票`);
-    else if (!text(row[cols.code])) errors.push(`${where}：學員代號空白`);
     else candidates.push(i);
   }
   if (errors.length) return { ok: false, errors };

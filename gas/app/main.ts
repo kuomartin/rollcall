@@ -1,7 +1,7 @@
 // Apps Script 進入點。建置時，這裡 export 的函式會成為頂層函式。
 
 import { parseRequest, type ApiResponse } from "../../core/api.ts";
-import { CODE_FIELD, missingRequired } from "../../core/roster.ts";
+import { missingRequired, rosterIndex } from "../../core/roster.ts";
 import { unknownFields } from "../../core/template.ts";
 import { handle } from "./api.ts";
 import { devHandle } from "./dev.ts";
@@ -115,7 +115,7 @@ export function loadSettings(): { template: string; sessions: string[]; mode: Mo
 export function storeSettings(template: string, sessionsText: string, mode: string): { ok: true } | { ok: false; error: string } {
   if (mode !== "code" && mode !== "ticket") return { ok: false, error: "未知的模式" };
   const headers = readRoster().headers;
-  const missing = missingRequired(headers);
+  const missing = missingRequired(headers, mode === "ticket");
   if (missing.length) return { ok: false, error: `學員名單缺少欄位：${missing.join("、")}` };
   const unknown = unknownFields(template, headers);
   if (unknown.length) return { ok: false, error: `學員名單沒有這些欄位：${unknown.join("、")}` };
@@ -152,10 +152,8 @@ export function clearCheckIns(session: string, confirm: string): { ok: true } | 
 
 /** 側邊欄自動跳轉：掃描頁同步確認後通知側邊欄，跳到學員名單的那一列。 */
 export function jumpTo(code: string): void {
-  const roster = readRoster();
-  const col = roster.headers.indexOf(CODE_FIELD);
-  const row = roster.rows.findIndex((r) => String(r[col]).trim() === code);
-  if (row === -1) return;
+  const row = rosterIndex(readRoster()).get(code);
+  if (row === undefined) return;
   const sheet = rosterSheet();
   sheet.getRange(row + 2, 1, 1, sheet.getLastColumn()).activate();
 }

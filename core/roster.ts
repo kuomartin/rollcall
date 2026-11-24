@@ -22,8 +22,9 @@ export interface RosterCache {
   rows: CacheRow[];
 }
 
-export function missingRequired(headers: readonly string[]): string[] {
-  return headers.includes(CODE_FIELD) ? [] : [CODE_FIELD];
+/** 代號模式靠學員代號比對，一定要有這欄；票券模式靠序號，學員代號可以省略。 */
+export function missingRequired(headers: readonly string[], ticketMode = false): string[] {
+  return ticketMode || headers.includes(CODE_FIELD) ? [] : [CODE_FIELD];
 }
 
 function text(value: unknown): string {
@@ -66,17 +67,37 @@ export function buildRosterCache(table: RosterTable, template: string, version: 
 }
 
 /**
+ * 一列在報到紀錄裡的代號：學員代號，空白或沒有這欄時用序號。
+ * 票券模式的學員代號可以省略，序號本身就是一張票一個值。
+ */
+export function rowCode(table: RosterTable, row: readonly unknown[]): string {
+  const code = text(row[table.headers.indexOf(CODE_FIELD)]);
+  if (code) return code;
+  const serialIndex = table.headers.indexOf(SERIAL_FIELD);
+  return serialIndex === -1 ? "" : text(row[serialIndex]);
+}
+
+/** 代號 → 列索引（0 起算），代號見 rowCode；重複的代號以第一列為準。報到紀錄的名單快照、報到時間欄與側邊欄跳轉都用它。 */
+export function rosterIndex(table: RosterTable): Map<string, number> {
+  const index = new Map<string, number>();
+  table.rows.forEach((row, i) => {
+    const code = rowCode(table, row);
+    if (code && !index.has(code)) index.set(code, i);
+  });
+  return index;
+}
+
+/**
  * 票券模式的名單快取：只帶有序號的列，每列多帶序號，掃描頁用它對回學員。
  * fields 是「需在名單」規則訊息引用到的欄位（core/rules.ts 的 rosterFields）。
  */
 export function buildTicketCache(table: RosterTable, fields: readonly string[], version: string): RosterCache {
   const kept = [...fields.filter((f) => f !== CODE_FIELD && f !== SERIAL_FIELD && table.headers.includes(f)), SERIAL_FIELD];
-  const codeIndex = table.headers.indexOf(CODE_FIELD);
   const serialIndex = table.headers.indexOf(SERIAL_FIELD);
   const rows: CacheRow[] = [];
   if (serialIndex !== -1) {
     table.rows.forEach((row, i) => {
-      if (text(row[codeIndex]) && text(row[serialIndex])) rows.push(cacheRow(table, i, kept));
+      if (text(row[serialIndex])) rows.push({ ...cacheRow(table, i, kept), [CODE_FIELD]: rowCode(table, row) });
     });
   }
   return { version, fields: kept, rows };

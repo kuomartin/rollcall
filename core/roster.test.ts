@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRosterCache, buildTicketCache, cacheRow, checkInTimes, findRow, markColumnHeader, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
+import { buildRosterCache, buildTicketCache, rosterIndex, rowCode, cacheRow, checkInTimes, findRow, markColumnHeader, maskPhone, missingRequired, type RosterTable } from "./roster.ts";
 
 const table: RosterTable = {
   headers: ["學員代號", "姓名", "手機", "班級", "備註"],
@@ -90,7 +90,7 @@ test("markColumnHeader names the roster column for a session", () => {
   assert.equal(markColumnHeader("5/22報到"), "5/22報到 報到時間");
 });
 
-test("buildTicketCache keeps rows with a serial and adds the serial to each row", () => {
+test("buildTicketCache keeps rows with a serial, using the serial when the attendee code is blank", () => {
   const ticketTable: RosterTable = {
     headers: ["學員代號", "姓名", "手機", "序號"],
     rows: [
@@ -101,9 +101,33 @@ test("buildTicketCache keeps rows with a serial and adds the serial to each row"
   };
   const cache = buildTicketCache(ticketTable, ["姓名", "手機", "不存在"], "v1");
   assert.deepEqual(cache.fields, ["姓名", "手機", "序號"]);
-  assert.deepEqual(cache.rows, [{ 學員代號: "S1", 姓名: "甲", 手機: "*******678", 序號: "E00001" }]);
+  assert.deepEqual(cache.rows, [
+    { 學員代號: "S1", 姓名: "甲", 手機: "*******678", 序號: "E00001" },
+    { 學員代號: "E00003", 姓名: "丙", 手機: "", 序號: "E00003" },
+  ]);
 });
 
 test("buildTicketCache is empty without a serial column", () => {
   assert.deepEqual(buildTicketCache(table, ["姓名"], "v1").rows, []);
+});
+
+test("buildTicketCache works without an attendee code column", () => {
+  const cache = buildTicketCache({ headers: ["姓名", "序號"], rows: [["甲", "VIP-001"], ["乙", ""]] }, ["姓名"], "v1");
+  assert.deepEqual(cache.rows, [{ 學員代號: "VIP-001", 姓名: "甲", 序號: "VIP-001" }]);
+});
+
+test("rowCode falls back to the serial", () => {
+  const t: RosterTable = { headers: ["學員代號", "序號"], rows: [] };
+  assert.equal(rowCode(t, ["S1", "E1"]), "S1");
+  assert.equal(rowCode(t, [" ", "E1"]), "E1");
+  assert.equal(rowCode(t, ["", ""]), "");
+  assert.equal(rowCode({ headers: ["學員代號"], rows: [] }, [""]), "");
+});
+
+test("rosterIndex keys rows by code or serial and keeps the first duplicate", () => {
+  const t: RosterTable = {
+    headers: ["學員代號", "姓名", "序號"],
+    rows: [["S1", "甲", "E1"], ["", "乙", "E2"], ["S1", "丙", "E3"], ["", "丁", ""]],
+  };
+  assert.deepEqual([...rosterIndex(t)], [["S1", 0], ["E2", 1]]);
 });

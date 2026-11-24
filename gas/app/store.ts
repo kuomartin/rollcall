@@ -6,9 +6,9 @@
 //
 // scanId 存在 CacheService：快取被清掉後重送的掃描可能多寫一列。報到本來就允許重複，所以接受。
 
-import { markColumnHeader, type RosterTable } from "../../core/roster.ts";
+import { markColumnHeader, rosterIndex, type RosterTable } from "../../core/roster.ts";
 import type { LogEntry, LogStore, RosterStore } from "../../core/sync.ts";
-import { DATETIME_FORMAT, ensureLogSheet, LOG_HEADERS, rosterIndex, rosterSheet } from "./sheets.ts";
+import { DATETIME_FORMAT, ensureLogSheet, LOG_HEADERS, rosterSheet } from "./sheets.ts";
 
 const FIXED = LOG_HEADERS.length;
 const CACHE_TTL_S = 21_600;

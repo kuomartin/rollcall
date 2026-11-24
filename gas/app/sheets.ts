@@ -24,16 +24,6 @@ export function readRoster(): RosterTable {
   return { headers: headers.map((h) => String(h).trim()), rows };
 }
 
-export function rosterIndex(roster: RosterTable): Map<string, number> {
-  const col = roster.headers.indexOf(CODE_FIELD);
-  const index = new Map<string, number>();
-  roster.rows.forEach((row, i) => {
-    const code = String(row[col] ?? "").trim();
-    if (code && !index.has(code)) index.set(code, i);
-  });
-  return index;
-}
-
 export function ensureLogSheet(session: string): Sheet {
   const existing = spreadsheet().getSheetByName(session);
   if (existing) return existing;

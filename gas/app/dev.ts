@@ -54,7 +54,7 @@ function seed(count: number, sessions: string[]): unknown {
  * 在 seed 之後切換成票券模式：前 signed 位學員簽發 E 序號，另外簽幾張不進名單的實體票，回傳票券讓測試掃描。
  * 名單上的前兩張寫入 QR 儲存格圖片，確認 data URL 的圖片寫得進去。
  */
-function ticketSeed(signed: number, sessions: string[]): unknown {
+function ticketSeed(signed: number, sessions: string[], blankCodes: number): unknown {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   saveSettings({ template: "報到成功；姓名：{{姓名}}", sessions, mode: "ticket" });
   const rules = ss.getSheetByName(RULES_SHEET);
@@ -78,6 +78,8 @@ function ticketSeed(signed: number, sessions: string[]): unknown {
   roster.getRange(2, col("序號"), signed, 1).setValues(serials.map((s) => [s]));
   roster.getRange(2, col(TICKET_FIELD), signed, 1).setValues(tokens.map((t) => [t]));
   roster.getRange(2, col(TICKET_QR_FIELD), 2, 1).setValues(tokens.slice(0, 2).map((t) => [qrCellImage(t)]));
+  // 票券模式的學員代號可以省略：最後 blankCodes 張票的學員代號清空。
+  if (blankCodes > 0) roster.getRange(2 + signed - blankCodes, col("學員代號"), blankCodes, 1).clearContent();
   storePrefixes({ E: { use: "名單", next: signed + 1, width: 5 }, "P01-": { use: "實體", next: 4, width: 5 } });
 
   const other = keyPairFromSeed(randomBytes(nacl.sign.seedLength));
@@ -157,7 +159,7 @@ export function devHandle(body: unknown): unknown {
   if (b.action === "devStartPhysical") return startPhysical(b.prefix ?? "", b.width ?? "", String(b.count ?? ""), true);
   if (b.action === "devWriteChunk" && b.batch) return writePhysicalChunk(b.batch, b.offset ?? 0, b.n ?? 100);
   if (b.action === "devPhysicalSummary" && b.batch) return physicalSummary(b.batch);
-  if (b.action === "devTicketSeed") return ticketSeed(b.signed ?? 5, b.sessions ?? ["報到"]);
+  if (b.action === "devTicketSeed") return ticketSeed(b.signed ?? 5, b.sessions ?? ["報到"], b.count ?? 0);
   if (b.action === "devClear" && b.session) {
     clearSession(b.session);
     return { cleared: b.session };
